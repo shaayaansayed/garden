@@ -1,13 +1,73 @@
 <!DOCTYPE html>
 <html lang="en">
   {% include head.html %}
+  <nav class="flex align-center font-ui">
+    <span class="flex-grow">
+      <a class="internal-link plain" href="/">Shay Sayed</a>
+    </span>
+    <span class="flex-shrink ssr">
+      <a href="/about" class="muted plain">About</a>
+    </span>
+    <span
+      id="theme-toggle"
+      title="Toggle dark mode"
+      aria-label="Toggle dark mode"
+      type="button"
+      role="switch"
+      aria-checked="false"
+    >
+      <div class="theme-toggle-slide"></div>
+      <div class="theme-toggle-switch"></div>
+    </span>
+  </nav>
   <body>
-    <nav>{% include nav.html %}</nav>
-    <div class="wrapper">
-      <main>{{ content }}</main>
-      <footer>{% include footer.html %}</footer>
-    </div>
+    <script>
+      if (
+        localStorage.theme === "dark" ||
+        (!("theme" in localStorage) &&
+          window.matchMedia("(prefers-color-scheme: dark)").matches)
+      ) {
+        document.querySelector("body").classList.add("theme-dark");
+      }
+    </script>
+    <main>{{ content }}</main>
 
     {% include link-previews.html wrapperQuerySelector="content" %}
   </body>
+  <script>
+    var darkModeToggle = document.querySelector("#theme-toggle");
+
+    function toggleTheme() {
+      document.body.classList.toggle("theme-dark");
+      updateThemeState();
+    }
+
+    function updateThemeState() {
+      let isDarkMode = document.body.classList.contains("theme-dark");
+      let theme = isDarkMode ? "dark" : "light";
+      localStorage.setItem("theme", theme);
+      darkModeToggle.setAttribute("aria-checked", isDarkMode.toString());
+    }
+
+    function initializeTheme() {
+      let isDarkMode = document.body.classList.contains("theme-dark");
+      darkModeToggle.setAttribute("aria-checked", isDarkMode.toString());
+    }
+
+    darkModeToggle.addEventListener("click", toggleTheme);
+
+    window.addEventListener("keydown", function (e) {
+      if (
+        document.activeElement.tagName === "INPUT" ||
+        document.activeElement.tagName === "TEXTAREA"
+      ) {
+        return;
+      }
+      if (e.key === "d" || e.key === "D") {
+        toggleTheme();
+      }
+    });
+
+    initializeTheme();
+  </script>
 </html>

@@ -1,9 +1,10 @@
 ---
 layout: page
-title: About
+title: About me
+id: about-me
 permalink: /about
 ---
 
-*This is an about page.*
+# About me
 
-Feel free to tell the world about what you love! 😍
+I'm Shay. I live and work in Austin, Texas. I build, write, and think about healthcare, economics, technology, and mathematics.

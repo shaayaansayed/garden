@@ -1,0 +1,33 @@
+---
+layout: default
+---
+
+<main>
+  <div class="wrap">
+    <h1>
+      <a href="/topics" class="muted internal-link"
+        ><span class="muted">Topics</span></a
+      >
+      <span class="faint font-normal">/</span> {{ page.topic }}
+    </h1>
+
+    <div class="pn1 muted font-ui">
+      <p>{{page.notes.size}} entries about this topic</p>
+    </div>
+
+    <ul class="list-plain tabular-nums">
+      {% for note in page.notes %}
+      <li>
+        <a href="{{ note.url }}" class="internal-link plain">
+          <flex class="align-baseline">
+            <span class="muted ppr flex-shrink small mh nowrap font-ui"
+              >{{ note.date | date: "%Y · %m" }}</span
+            >
+            <u>{{ note.title }}</u>
+          </flex>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+  </div>
+</main>
