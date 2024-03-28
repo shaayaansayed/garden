@@ -1,27 +1,22 @@
-### Site Settings ###
-source: ../
-baseurl: /
-title: Shay's Space
-description: Ideas, essays, and projects by Shay Sayed.
-
-include: ["_pages"]
-baseurl: ""
-use_html_extension: false
-open_external_links_in_new_tab: true
-embed_tweets: false
-
 ### SEO ###
-tagline:
-lang: en_US
+title: "Shay's Space"
+url: "https://shays.space"
+tagline: "Ideas, essays, and projects by Shay Sayed."
+description: "Ideas, essays, and projects by Shay Sayed. Writing about healthcare technology."
+logo: "/assets/icon.png"
 social:
-  name: Shaayaan Sayed
+  name: "Shaayaan Sayed"
   links:
     - https://www.linkedin.com/in/shaayaan-sayed-8097b1100/
     - https://twitter.com/ShaayaanS
     - https://github.com/shaayaansayed
 
+include: ["_pages"]
+use_html_extension: false
+open_external_links_in_new_tab: true
+embed_tweets: false
+
 permalink: pretty
-relative_permalinks: false
 
 plugins:
   - jekyll-last-modified-at
