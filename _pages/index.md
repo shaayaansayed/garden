@@ -1,6 +1,6 @@
 ---
 layout: landing
-title: landing
-id: landing
+title: Home
+id: home
 permalink: /
 ---

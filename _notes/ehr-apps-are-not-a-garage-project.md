@@ -3,6 +3,7 @@ title: EHR apps are not a garage project
 date: 2024-03-18
 tags: healthcare health-it
 pinned: true
+description: This blog post delves into the progress and challenges of integrating health apps with Electronic Health Record (EHR) systems through the SMART-on-FHIR standard. Inspired by a 2009 vision for a healthcare platform akin to the iPhone App Store, the initiative faces hurdles like proprietary APIs, the piecemeal adoption of FHIR, and complex healthcare workflows. Despite federal mandates and the development of EHR app galleries, the industry struggles with app interoperability and streamlined development processes, highlighting the gap between vision and reality in healthcare IT innovation.
 ---
 
 Back in 2009, the Boston Children’s Hospital wrote a white paper for the New England Journal of Medicine titled [“Ten Principles for Fostering Development of an 'iPhone­like' Platform for Healthcare Information Technology.”](https://smarthealthit.org/2009/06/ten-principles/) Their vision was to create a platform like the iPhone App Store but for EHRs. Over the next few years, this evolved into [SMART-on-FHIR](https://build.fhir.org/ig/HL7/smart-app-launch/app-launch.html), a standard that allows health apps to securely connect, share and update data, much like how Mint securely links to your bank accounts and pulls your transactions, so it can organize your finances.
