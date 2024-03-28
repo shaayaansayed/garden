@@ -31,11 +31,11 @@ Redox and HealthJump are API aggregators. The concept isn’t unique to healthca
 
 Although not explicitly stated in their docs, it's likely that Redox and HealthJump are using vendor-specific APIs behind the scenes. Of course, the catch with API aggregators is that your app’s reach is limited to the health systems in the aggregator’s network. To branch out, a new system would need to hop on board with the aggregator first.
 
-In three cases, YNHH had to use their EHR's private API, even though FHIR had the features they needed.
+In three cases, YNHH had to either use EHR's private API or settle with a work around, even though FHIR had the features they needed.
 
 - Their EHR didn't have the [FHIR Subscription API](https://build.fhir.org/subscription.html). Because of this, their app couldn't automatically notify care coordinators when a COVID-19 diagnosis was entered in the EHR. They used the EHR's rule engine instead. Clinicians had to send a referral request to the care coordination team. This added an extra manual step to their final workflow.
-  The EHR didn't have the [CommunicationRequest](https://build.fhir.org/communicationrequest.html) Resource. So, the app couldn't notify patients about enrollment through the patient portal. The developers had to send patients a text message instead. Patients had to use both their phone and the portal to communicate.
-- The EHR didn't have the CommunicationRequest Resource. So, the app couldn't notify patients about enrollment through the patient portal. The developers had to send patients a text message instead. Patients had to use both their phone and the portal to communicate.
+- The EHR didn't have the [CommunicationRequest](https://build.fhir.org/communicationrequest.html) Resource, so the app couldn't notify patients about enrollment through the patient portal. The developers had to send patients a text message instead. Patients had to use both their phone and the portal to communicate.
+- Since CommunicationRequests weren't available, care coordinators couldn't get alerts about abnormal vitals and symptoms. The app had to encourage patients to contact their care coordinator.
 
 ## Health systems have unique clinical workflows
 
