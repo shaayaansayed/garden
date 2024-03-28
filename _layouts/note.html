@@ -12,6 +12,10 @@ layout: default
             >{% if page.type != 'pages' %} {{ page.date | date: "%B %-d, %Y" }}
             {% endif %}
           </time>
+          ·
+          <span class="reading-time" title="Estimated read time"
+            >{{ page.content | reading_time | append : " minute read"}}</span
+          >
         </div>
       </div>
 

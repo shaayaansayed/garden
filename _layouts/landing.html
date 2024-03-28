@@ -17,13 +17,15 @@ layout: default
           <time datetime="{{ pinned_note.date | date_to_xmlschema }}"
             >{{ pinned_note.date | date: "%B %d, %Y" }}</time
           >
+          ·
           <span class="reading-time" title="Estimated read time"
-            >{{ pinned_note.read_time }}</span
+            >{{ pinned_note.content | reading_time | append : " minute
+            read"}}</span
           >
         </div>
         <div class="small muted">
-          {{ pinned_note.excerpt | truncatewords: 20, " ...
-          Keep&nbsp;reading&nbsp;→" }}
+          {{ pinned_note.excerpt | strip_html | truncatewords: 33 | append :
+          "<br />Keep reading →"}}
         </div>
       </a>
     </div>

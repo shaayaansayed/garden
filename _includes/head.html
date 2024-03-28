@@ -1,19 +1,16 @@
 <head>
   <meta charset="UTF-8" />
-
-  <link rel="canonical" href="{{ site.url }}{{ page.url }}" />
-
+  <title>Shay Sayed</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
   <meta
     name="description"
-    content="{% if page.excerpt %}{{ page.excerpt | strip_html | strip_newlines | truncate: 160 }}{% else %}{{ site.title }}{% endif %}"
+    content="Ideas, essays, and projects by Shay Sayed."
   />
+  <meta name="author" content="Shay Sayed" />
+  <link rel="canonical" href="{{ site.url }}{{ page.url }}" />
 
   <meta property="og:site_name" content="{{ site.title }}" />
-
   <link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgo=" />
-
   <link rel="stylesheet" href="{{ site.baseurl }}/styles.css" />
 
   {% if page.excerpt %}
