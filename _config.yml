@@ -1,9 +1,24 @@
+### Site Settings ###
+source: ../
+baseurl: /
 title: Shay's Space
+description: Ideas, essays, and projects by Shay Sayed.
+
 include: ["_pages"]
 baseurl: ""
 use_html_extension: false
 open_external_links_in_new_tab: true
 embed_tweets: false
+
+### SEO ###
+tagline:
+lang: en_US
+social:
+  name: Shaayaan Sayed
+  links:
+    - https://www.linkedin.com/in/shaayaan-sayed-8097b1100/
+    - https://twitter.com/ShaayaanS
+    - https://github.com/shaayaansayed
 
 permalink: pretty
 relative_permalinks: false
@@ -11,6 +26,7 @@ relative_permalinks: false
 plugins:
   - jekyll-last-modified-at
   - liquid_reading_time
+  - jekyll-seo-tag
 
 sass:
   sass_dir: _sass

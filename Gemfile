@@ -9,3 +9,4 @@ gem "jekyll-last-modified-at", git: "https://github.com/maximevaillancourt/jekyl
 gem "webrick", "~> 1.8"
 gem "nokogiri"
 gem 'liquid_reading_time'
+gem 'jekyll-seo-tag'
