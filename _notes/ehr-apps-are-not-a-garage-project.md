@@ -1,5 +1,5 @@
 ---
-title: No one's building an EHR app from their garage yet
+title: EHR apps are not a garage project
 date: 2024-03-18
 tags: healthcare health-it
 pinned: true
