@@ -66,7 +66,7 @@ Products in cloud computing and developer tools present potential solutions. Bac
 
 We could dive deeper. There’s a whole array of challenges that apps face when they try to chat with a FHIR server, and it's not all about EHRs. Many of these are more fundamental to the FHIR standard and other legacy data formats, and I’ll save these for another post. It’s important to note that using SMART-on-FHIR and FHIR APIs is a must for any app that wants to exchange data with a server holding FHIR data. This applies to all sorts of apps, not just those within an EHR. Take [CMS's Blue Button API](https://bluebutton.cms.gov/) and [Flexpa](https://www.flexpa.com/), for example – they live outside the EHR but still use these technologies. But for apps that live inside the EHR, FHIR APIs are just one piece of the puzzle.
 
-Brendan Keeler recently tweeted about some of the inherent problems FHIR APIs face. And if you want to go down the rabbit hole, Alastair Allen and Thomas Beale have written about the leaky abstraction problem of FHIR.
+Brendan Keeler recently [tweeted](https://twitter.com/healthapiguy/status/1705225488283976122) about some of the inherent problems FHIR APIs face. And if you want to go down the rabbit hole, [Alastair Allen](https://medium.com/@alastairallen/fhir-openehr-2022-53716f837340) and [Thomas Beale](https://wolandscat.net/2022/05/15/a-lingua-franca-for-e-health-takes-shape-with-graphitehealth/) have written about the leaky abstraction problem of FHIR.
 
 I’ll close with a quote from one of the participants in the ONC survey.
 
