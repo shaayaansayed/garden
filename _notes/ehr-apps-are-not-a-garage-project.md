@@ -43,7 +43,9 @@ EHRs are highly customizable. Providers will adapt the EHR around their unique c
 
 YNHH's COVID-19 Tracker is a great example of an app closely tied to a specific workflow. The image below shows the app's data flow with the steps involved for patient enrollment and monitoring.
 
-<img src="{{ site.baseurl }}/assets/images/ynhh-covid19-tracker.png"/>
+<figure class="wide">
+<img src="/assets/images/ynhh-covid19-tracker.png"/>
+</figure>
 
 But another health system might have some subtle differences that would impact the app's design and implementation. I can think of a few:
 
