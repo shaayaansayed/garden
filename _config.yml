@@ -1,4 +1,5 @@
-### SEO ###
+# site settings
+locale: "en-US"
 title: "Shay's Space"
 url: "https://shays.space"
 tagline: "Ideas, essays, and projects by Shay Sayed."

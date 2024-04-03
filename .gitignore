@@ -1,15 +1,29 @@
-# Generated website directory
-_site/
+# Vim
+*~
+*.sw[p_]
 
-# Sass cache
-.sass-cache/
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
 
-# Jekyll cache & metadata
-.jekyll-cache/
+# Ruby Gem
+*.gem
+.bundle
+Gemfile.lock
+**/vendor/bundle
+
+# Node.js and NPM
+node_modules
+npm-debug.log*
+package-lock.json
+codekit-config.json
+
+# macOS
+.DS_Store
+
+# Jekyll generated files
+.jekyll-cache
 .jekyll-metadata
-
-# Notes graph metadata
-_includes/notes_graph.json
-
-# Obsidian config
-.obsidian/
+.sass-cache
+_asset_bundler_cache
+_site
