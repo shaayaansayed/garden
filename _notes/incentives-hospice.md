@@ -10,7 +10,7 @@ When you look at the numbers, hospice isn’t exactly killing it compared to oth
 
 The disparity in margins between for-profit and nonprofits is too wide to ignore. It’s possible that for-profits have cracked some code; maybe their clinical and administrative operations are more efficient without sacrificing the quality of care. At the same time, data suggests that gains in margins have come partly from leveraging weak spots in how hospice care is paid for. These tactics aren’t fraudulent, they’re just a product of incentives that arise from the hospice payment structure. More importantly, they raise the question of whether these practices harm patients currently in hospice or those who would benefit from it.
 
-# Hospice's payment structure is unique
+## Hospice's payment structure is unique
 
 Hospices do a lot to care for our terminally-ill loved ones. A patient in their final days must be eased of pain, have their medications managed, their spiritual energy cultivated—the list goes on. It takes an interdisciplinary team to navigate this, with physicians, nurses, home health aids, social workers, spiritual guides, nutrition experts, and others. Each member plays their part to harmonize the person’s final days of life with comfort and some peace.
 
@@ -34,7 +34,7 @@ Also, in our previous calculation, we only consider one patient. If we look at a
 
 Trying to “decrease discharges and deaths” doesn’t make much sense. It’s not like hospices have control over how long their patients live. And yet, after Medpac examined hospice episodes across the nation, they found that hospices might be influencing how long their patients stay in hospice on average. And this is where it gets quirky.
 
-# Increasing average length of stay by selectively admitting patients
+## Increasing average length of stay by selectively admitting patients
 
 The data is telling: [patients at for-profit hospices receive care for an average of 112 days, while those at nonprofits stay for only 72](https://www.medpac.gov/wp-content/uploads/2021/10/mar21_medpac_report_ch11_sec.pdf).
 
@@ -50,13 +50,13 @@ Let me be clear. Longer stays in hospice aren't necessarily a bad thing. In fact
 
 But what is questionable is selectively enrolling patients who are likely to have longer stays in the first place. The correlations between profit, length of stay, and patient mix suggest that margin-motivated hospices might be doing this, but it’s ambiguous whether these patterns are due to deliberately manipulative practices or just unintended consequences of cost-saving strategies. There’s limited data on referral and enrollment tactics, and they reveal some insights, but no definitive conclusions.
 
-# Partnerships with assisted-living facilities are desirable
+## Partnerships with assisted-living facilities are desirable
 
 Hospice comes to you, wherever you call home–whether it’s your actual house or apartment, a skilled nursing facility, or an assisted living facility. Interestingly, Medpac’s analysis shows that for-profit hospices treat a far greater proportion of patients from assisted living facilities (ALFs). These hospices might prefer patients in ALFs because their disease profiles lend to longer lengths of stay. [Folks in ALFs are more likely to have neurological conditions like dementia, and less likely to have cancer](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC10485296/#CIT0022). [A survey from Mount Sinai and Yale](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4315613/), also found that for-profits were less open to partnering with oncology-centers.
 
 On the flip side, it could be the case that ALFs offer efficiencies that make them attractive. If the hospice is treating multiple patients living in the same place, it means lower transportation costs and less time wasted on travel for hospice workers. Plus, there’s a strong network effect when sourcing referrals from ALFs, and the ALF staff can help share the load of patient care with the hospice team.
 
-# Restrictive enrollment policies are barriers to complex need patients
+## Restrictive enrollment policies are barriers to complex need patients
 
 Sometimes hospices have enrollment policies that require patients to give up certain treatments. This is in addition to the requirement imposed by Medicare’s hospice benefit, which says that if you want insurance coverage for hospice, you have to forgo curative treatments.
 
@@ -66,13 +66,13 @@ You can't blame these hospices entirely. Palliative cancer treatments can easily
 
 There’s not a lot of accessible data on hospice enrollment policies. The studies are limited, and hospices are probably not eager to share this information. It’s hard to say exactly how much of an impact this has on access to care for patients with complex, high-need illnesses, and the extent to which high-performing hospices restrict enrollment.
 
-# Medicare caps a hospice’s total payments
+## Medicare caps a hospice’s total payments
 
 Medicare has a clause in the payment structure that discourages hospices from enrolling patients too early or remain in care for too long. It’s a limit on the total amount of money a hospice can get paid. In 2023, the cap was about $32,000 per patient on average. So, if a hospice took care of 50 patients throughout the year, they'd have to pay Medicare back if they received more than $1.6M ($32K x 50) in reimbursements. That's what’s called their cap liability.
 
 Sometimes it seems like every rule meant to mold positive behavior introduces ways for it to be gamed. The cap liability is affected by two things: the number of patients a hospice serves in a given year and the average payments received per patient. Both can be fiddled with, especially in the months before the year ends, by changing how many patients a hospice enrolls or discharges. And again, if you take a look at the data, there’s some evidence that this is happening.
 
-# Cap liabilities can be decreased by tweaking enrollments and discharges
+## Cap liabilities can be decreased by tweaking enrollments and discharges
 
 The cap liability is finalized after the year ends because it depends on the total number of patients the hospice took care of that year. Let's keep going with the example from before. Say the hospice got $2M in payments that year. That means for each patient, they got an average of $40K ($1.8M / 50), and they'll have to pay back $300K ($6K x 50). Not good.
 
