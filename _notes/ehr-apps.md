@@ -2,7 +2,7 @@
 title: EHR apps are not a garage project
 date: 2024-03-18
 tags: healthcare health-it
-pinned: true
+pinned: false
 description: This blog post delves into the progress and challenges of integrating health apps with Electronic Health Record (EHR) systems through the SMART-on-FHIR standard. Inspired by a 2009 vision for a healthcare platform akin to the iPhone App Store, the initiative faces hurdles like proprietary APIs, the piecemeal adoption of FHIR, and complex healthcare workflows. Despite federal mandates and the development of EHR app galleries, the industry struggles with app interoperability and streamlined development processes, highlighting the gap between vision and reality in healthcare IT innovation.
 ---
 
