@@ -1,5 +1,5 @@
 ---
-title: Incentives in Hospice
+title: Financial incentives in hospice
 date: 2024-04-10
 tags: healthcare medicare
 pinned: true
