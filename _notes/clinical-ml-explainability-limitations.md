@@ -1,5 +1,5 @@
 ---
-title: Machine learning explainability in clinical settings is only marginally useful
+title: AI explainability in clinical settings is only marginally useful
 date: 2024-05-28
 tags: healthcare AI
 pinned: true
