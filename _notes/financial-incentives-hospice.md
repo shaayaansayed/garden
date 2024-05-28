@@ -2,7 +2,7 @@
 title: Financial incentives in hospice
 date: 2024-04-10
 tags: healthcare medicare
-pinned: true
+pinned: false
 description: This blog post delves into the disparities and operational intricacies within the hospice sector, highlighting the significant difference in Medicare margins between for-profit and nonprofit hospices, with for-profits showing nearly quadruple the margins. It explores the hospice payment structure's impact on care delivery, revealing how for-profit entities potentially leverage the system for financial gain, and discusses the ethical implications and challenges in patient care and enrollment policies. Furthermore, it scrutinizes the strategies hospices might employ to navigate Medicare's payment caps and the consequent effects on patient admission and discharge practices, underscoring the complexity of designing effective incentives in healthcare.
 ---
 
