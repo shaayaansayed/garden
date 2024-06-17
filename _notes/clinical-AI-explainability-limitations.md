@@ -14,12 +14,8 @@ Explainable AI in clinical settings has been underwhelming and potentially unrel
 
 Interfaces showing predictions to end-users are pretty standardized. There's an outcome, like an adverse event like hospitalization or onset of disease, and a patient score, which comes from the model. With with each score, there's a list of "features" (also called variables, predictors, or factors) that were determined to be important to the model - the so-called "contributing factors" to the prediction.
 
-<figure class="wide">
-<img src="/assets/images/closedloop.jpg"/>
-</figure>
-
 <figure class="wide" style="padding-top: 0em">
-<img src="/assets/images/phf-2.png"/>
+<img src="/assets/images/phf.png"/>
 <figcaption style="text-align: left">
     The top image is from <a href="https://www.youtube.com/watch?v=1eW1AxieoAk&t=685s">ClosedLoop AI's platform</a>. It shows a timeline view of a patient's risk. The model's score is at the top right corner (96%), and the two widgets at the bottom left show contributing factors for predictions at two different times.
 
