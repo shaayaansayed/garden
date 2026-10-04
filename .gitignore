@@ -27,3 +27,12 @@ codekit-config.json
 .sass-cache
 _asset_bundler_cache
 _site
+# Personal agent / local credentials
+.dev.vars*
+.env*
+auth.json
+codex-auth.json
+.wrangler/
+.playwright-cli/
+!.dev.vars.example
+.personal/

@@ -47,3 +47,19 @@ defaults:
     values:
       layout: topic
       permalink: topics/:topic/
+
+# Worker sources and private agent protocol must not be published as blog assets.
+exclude:
+  - agent
+  - node_modules
+  - package.json
+  - bun.lock
+  - tsconfig.json
+  - wrangler.jsonc
+  - README.md
+  - AGENTS.md
+  - '*.ts'
+  - '*.tsx'
+  - personal.css
+  - '*.json'
+  - mise.toml

@@ -1,0 +1,36 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "shays-space",
+  "account_id": "4bec4aa26f3bed6e6092183b47fe93ac",
+  "main": "worker.ts",
+  "compatibility_date": "2026-10-03",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [
+    { "pattern": "agent.shays.space", "custom_domain": true },
+    { "pattern": "shays.space/personal", "zone_name": "shays.space" },
+    { "pattern": "shays.space/personal/*", "zone_name": "shays.space" }
+  ],
+  "assets": {
+    "directory": "./_site",
+    "binding": "ASSETS",
+    "run_worker_first": ["/personal", "/personal/*"],
+    "not_found_handling": "404-page"
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "PERSONAL_AGENT", "class_name": "PersonalAgent" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["PersonalAgent"] }],
+  "vars": {
+    "OWNER_EMAIL": "shaayaansayed@gmail.com",
+    "GITHUB_REPOSITORY": "shaayaansayed/obsidian-vault",
+    "GITHUB_BRANCH": "main",
+    "AGENT_MODEL": "gpt-6.1-sol",
+    "AGENT_TIMEZONE": "America/Chicago",
+    "MAX_REQUESTS_PER_DAY": "50",
+    "MAX_MODEL_CALLS_PER_DAY": "200"
+  },
+  "rules": [{ "type": "Text", "globs": ["**/AGENTS.md", "**/.personal/*.txt"], "fallthrough": true }],
+  "observability": { "enabled": false }
+}
