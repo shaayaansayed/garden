@@ -27,7 +27,7 @@
     "GITHUB_REPOSITORY": "shaayaansayed/obsidian-vault",
     "GITHUB_BRANCH": "main",
     "AGENT_MODEL": "gpt-6.1-sol",
-    "AGENT_TIMEZONE": "America/Chicago",
+    "AGENT_TIMEZONE": "America/New_York",
     "MAX_REQUESTS_PER_DAY": "50",
     "MAX_MODEL_CALLS_PER_DAY": "200"
   },
