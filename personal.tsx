@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AssistantRuntimeProvider, MessagePrimitive, ThreadPrimitive, useAuiState, useExternalStoreRuntime, type ThreadMessageLike } from '@assistant-ui/react';
 import Markdown from 'react-markdown';
@@ -117,12 +117,9 @@ const angleVerbs: Record<string, string> = { 'ask question': 'Ask', 'add evidenc
 const hookPhrases: Record<string, string> = { 'unstated assumption': 'about the unstated assumption', 'missing tradeoff': 'on the missing tradeoff', mechanism: 'on how it actually works',
   'data context': 'on what the numbers leave out', implementation: 'on how it plays out in practice' };
 const compact = (n?: number) => n === undefined ? '' : n >= 1_000_000 ? `${(n / 1e6).toFixed(1)}M` : n >= 1_000 ? `${Math.round(n / 1e3)}k` : String(n);
-const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { timeZone, hour: 'numeric', minute: '2-digit' });
+const clock = (time: string | number) => new Date(time).toLocaleTimeString([], { timeZone, hour: 'numeric', minute: '2-digit' });
 // Pulls run at 17:00 and 22:00 UTC (wrangler.jsonc); show the next one in New York time.
-function nextPull(now = new Date()) {
-  const slots = [17, 22, 41].map(h => Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), h));
-  return clock(new Date(slots.find(t => t > now.getTime())!).toISOString());
-}
+const nextPull = (now = Date.now()) => clock([17, 22, 24 + 17].map(h => new Date(now).setUTCHours(h, 0, 0, 0)).find(t => t > now)!);
 
 type MarkState = 'replied' | 'done' | 'skipped';
 type Marks = Record<string, { state: MarkState; at: string }>;
@@ -137,17 +134,21 @@ function useMarks(date?: string) {
       setMarks(JSON.parse(localStorage.getItem(key) || '{}'));
     } catch { setMarks({}); }
   }, [key]);
-  // Functional updates so quick successive marks never overwrite each other.
-  const update = (fn: (prev: Marks) => Marks) => setMarks(prev => { const next = fn(prev); try { localStorage.setItem(key, JSON.stringify(next)); } catch {} return next; });
-  return { marks, mark: (id: string, state: MarkState) => update(prev => ({ ...prev, [id]: { state, at: new Date().toISOString() } })),
-    unmark: (id: string) => update(prev => { const { [id]: _, ...rest } = prev; return rest; }) };
+  // Functional updates so quick successive marks never overwrite each other. No state clears the mark.
+  const setMark = (id: string, state?: MarkState) => setMarks(prev => {
+    const { [id]: _, ...next }: Marks = prev; if (state) next[id] = { state, at: new Date().toISOString() };
+    try { localStorage.setItem(key, JSON.stringify(next)); } catch {} return next;
+  });
+  return [marks, setMark] as const;
 }
 
 // Post text: real links and @mentions become links (React escapes everything else), long posts clamp with a toggle.
 const TOKEN = /(https?:\/\/[^\s<]+[^\s<.,:;"')\]!?]|(?<![\w@])@\w{1,15})/g;
-const linkify = (text: string) => text.split(TOKEN).map((part, i) => i % 2 === 0 ? part
-  : <a key={i} href={part.startsWith('@') ? `https://x.com/${part.slice(1)}` : part} target="_blank" rel="noopener noreferrer">
-    {part.startsWith('@') ? part : (s => s.length > 40 ? s.slice(0, 39) + '…' : s)(part.replace(/^https?:\/\/(www\.)?/, ''))}</a>);
+const linkify = (text: string) => text.split(TOKEN).map((part, i) => {
+  if (i % 2 === 0) return part;
+  const mention = part.startsWith('@'), label = mention ? part : part.replace(/^https?:\/\/(www\.)?/, '');
+  return <a key={i} href={mention ? `https://x.com/${part.slice(1)}` : part} target="_blank" rel="noopener noreferrer">{label.length > 40 ? label.slice(0, 39) + '…' : label}</a>;
+});
 function PostText({ text, open, onToggle, oneLine }: { text: string; open: boolean; onToggle: () => void; oneLine?: boolean }) {
   const ref = useRef<HTMLParagraphElement>(null);
   const [long, setLong] = useState(false);
@@ -160,13 +161,13 @@ function PostText({ text, open, onToggle, oneLine }: { text: string; open: boole
     {!oneLine && (long || open) && <button className="text-toggle" aria-expanded={open} onClick={onToggle}>{open ? 'Show less' : 'Show more'}</button>}</>;
 }
 
-function PickRow({ p, pullAt, mark, selected, expanded, onSelect, onToggle, onMark, onUndo, rowRef }: {
+function PickRow({ p, pullAt, mark, selected, expanded, onSelect, onToggle, onMark, onUndo }: {
   p: EngagePick; pullAt: string; mark?: Marks[string]; selected: boolean; expanded: boolean;
-  onSelect: () => void; onToggle: () => void; onMark: (s: MarkState) => void; onUndo: () => void; rowRef: (el: HTMLLIElement | null) => void;
+  onSelect: () => void; onToggle: () => void; onMark: (s: MarkState) => void; onUndo: () => void;
 }) {
   const posted = Date.parse(pullAt) - p.ageHours * 3_600_000, hours = Math.max(0, Math.round((Date.now() - posted) / 3_600_000));
   const verb = angleVerbs[p.angle], hook = hookPhrases[p.hook];
-  return <li ref={rowRef} id={'pick-' + p.id} tabIndex={selected ? 0 : -1} aria-current={selected || undefined} aria-keyshortcuts="J K Enter D S U E" onClick={e => { onSelect(); if (e.target === e.currentTarget || !(e.target as HTMLElement).closest('a, button')) e.currentTarget.focus({ preventScroll: true }); }}
+  return <li id={'pick-' + p.id} tabIndex={selected ? 0 : -1} aria-current={selected || undefined} aria-keyshortcuts="J K Enter D S U E" onClick={e => { onSelect(); if (!(e.target as HTMLElement).closest('a, button')) e.currentTarget.focus({ preventScroll: true }); }}
     className={'pick' + (selected ? ' selected' : '') + (mark ? ' handled' : '')}>
     <div className="pick-body">
       <div className="pick-head"><strong>{p.name}</strong><span>@{p.handle}</span>
@@ -194,52 +195,49 @@ function EngageView() {
   const [openPulls, setOpenPulls] = useState<Record<string, boolean>>({});
   const [said, setSaid] = useState('');
   const last = useRef<string | undefined>(undefined);
-  const rows = useRef(new Map<string, HTMLLIElement>());
-  const { marks, mark, unmark } = useMarks(today?.date);
-  const load = useRef(async () => {});
-  load.current = async () => { try { setToday(await api<EngageToday>('engage/today')); setError(''); } catch (e) { setError(errorText(e)); } };
+  const [marks, setMark] = useMarks(today?.date);
+  const load = useCallback(async () => { try { setToday(await api<EngageToday>('engage/today')); setError(''); } catch (e) { setError(errorText(e)); } }, []);
   useEffect(() => {
-    void load.current();
-    const timer = setInterval(() => { if (!document.hidden) void load.current(); }, 300_000);
-    const onShow = () => { if (!document.hidden) void load.current(); };
-    document.addEventListener('visibilitychange', onShow);
-    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', onShow); };
-  }, []);
+    const refresh = () => { if (!document.hidden) void load(); };
+    void load(); const timer = setInterval(refresh, 300_000); document.addEventListener('visibilitychange', refresh);
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', refresh); };
+  }, [load]);
   const pulls = [...(today?.pulls ?? [])].reverse();
-  const all = pulls.flatMap(pull => pull.picks.map(p => ({ p, pull })));
-  const open = all.filter(({ p }) => !marks[p.id]).length;
-  const visible = all.filter(({ p, pull }) => openPulls[pull.at] || pull.picks.some(x => !marks[x.id]));
-  const act = (id: string, state: MarkState) => { mark(id, state); last.current = id; setSaid(`${markLabels[state]}.`); };
-  const undo = (id = last.current) => { if (id && marks[id]) { unmark(id); setSaid('Marked open again.'); } };
+  const picks = pulls.flatMap(pull => pull.picks), openCount = picks.filter(p => !marks[p.id]).length;
+  // Keyboard navigation skips pulls collapsed as all handled.
+  const visible = pulls.filter(pull => openPulls[pull.at] || pull.picks.some(p => !marks[p.id])).flatMap(pull => pull.picks);
+  const act = (id: string, state: MarkState) => { setMark(id, state); last.current = id; setSaid(`${markLabels[state]}.`); };
+  const undo = (id = last.current) => { if (id && marks[id]) { setMark(id); setSaid('Marked open again.'); } };
+  const toggle = (id: string) => setExpanded(x => ({ ...x, [id]: !x[id] }));
   const move = (step: number) => {
-    const i = visible.findIndex(({ p }) => p.id === selected), next = visible[Math.min(visible.length - 1, Math.max(0, i + step))];
+    const i = visible.findIndex(p => p.id === selected), next = visible[Math.min(visible.length - 1, Math.max(0, i + step))];
     if (!next) return;
-    setSelected(next.p.id);
-    const el = rows.current.get(next.p.id); el?.focus({ preventScroll: true }); el?.scrollIntoView({ block: 'nearest' });
+    setSelected(next.id);
+    const el = document.getElementById('pick-' + next.id); el?.focus({ preventScroll: true }); el?.scrollIntoView({ block: 'nearest' });
   };
   // Shortcuts listen on the window while this tab is open, so j works before any row has focus. Text fields are left alone.
-  const keyRef = useRef<(e: KeyboardEvent) => void>(() => {});
-  useEffect(() => { const h = (e: KeyboardEvent) => keyRef.current(e); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, []);
-  keyRef.current = (e: KeyboardEvent) => {
-    const target = e.target as HTMLElement;
-    if (e.metaKey || e.ctrlKey || e.altKey || target.closest('input, textarea, [contenteditable], [role="dialog"]')) return;
-    if (e.key === 'Enter' && target.tagName !== 'LI' && target.tagName !== 'BODY') return;
-    const current = visible.find(({ p }) => p.id === selected)?.p;
-    const keys: Record<string, () => void> = {
-      j: () => move(1), ArrowDown: () => move(1), k: () => move(-1), ArrowUp: () => move(-1),
-      Enter: () => { if (current && !marks[current.id]) { window.open(current.url, '_blank', 'noopener'); act(current.id, 'replied'); } },
-      o: () => { if (current && !marks[current.id]) { window.open(current.url, '_blank', 'noopener'); act(current.id, 'replied'); } },
-      d: () => { if (current && !marks[current.id]) act(current.id, 'done'); }, s: () => { if (current && !marks[current.id]) act(current.id, 'skipped'); },
-      u: () => undo(), e: () => { if (current) setExpanded(x => ({ ...x, [current.id]: !x[current.id] })); },
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (e.metaKey || e.ctrlKey || e.altKey || target.closest('input, textarea, [contenteditable], [role="dialog"]')) return;
+      if (e.key === 'Enter' && target.tagName !== 'LI' && target.tagName !== 'BODY') return;
+      const current = visible.find(p => p.id === selected), pending = current && !marks[current.id] ? current : undefined;
+      const reply = () => { if (pending) { window.open(pending.url, '_blank', 'noopener'); act(pending.id, 'replied'); } };
+      const keys: Record<string, () => void> = {
+        j: () => move(1), ArrowDown: () => move(1), k: () => move(-1), ArrowUp: () => move(-1), Enter: reply, o: reply,
+        d: () => pending && act(pending.id, 'done'), s: () => pending && act(pending.id, 'skipped'),
+        u: () => undo(), e: () => current && toggle(current.id),
+      };
+      const run = keys[e.key];
+      if (run) { e.preventDefault(); run(); }
     };
-    const run = keys[e.key];
-    if (run) { e.preventDefault(); run(); }
-  };
+    window.addEventListener('keydown', onKey); return () => window.removeEventListener('keydown', onKey);
+  });
   return <section className="activity engage" aria-labelledby="engage-title">
     <header className="engage-top"><h1 id="engage-title">Engage</h1>
-      {today && <p className="engage-status num">{all.length ? (open ? <><strong>{open} open</strong> of {all.length} today</> : <strong>All {all.length} handled</strong>) : 'Nothing yet today'} · next pull about {nextPull()}</p>}</header>
+      {today && <p className="engage-status num">{picks.length ? (openCount ? <><strong>{openCount} open</strong> of {picks.length} today</> : <strong>All {picks.length} handled</strong>) : 'Nothing yet today'} · next pull about {nextPull()}</p>}</header>
     <div className="sr-only" role="status" aria-live="polite">{said}</div>
-    {error && <div className="engage-error" role="alert"><CircleAlert size={16} aria-hidden="true" /><span>Couldn’t load today’s posts. {error}</span><button className="ghost" onClick={() => void load.current()}>Try again</button></div>}
+    {error && <div className="engage-error" role="alert"><CircleAlert size={16} aria-hidden="true" /><span>Couldn’t load today’s posts. {error}</span><button className="ghost" onClick={() => void load()}>Try again</button></div>}
     {!today && !error ? <ol className="picks" aria-busy="true" aria-label="Loading today’s posts">{[0, 1, 2].map(i => <li key={i} className="pick skeleton"><span /><span /><span /></li>)}</ol>
       : today && !pulls.length ? <p className="engage-empty">Nothing yet today. The first pull lands about {nextPull()}.</p>
       : pulls.map(pull => {
@@ -249,9 +247,7 @@ function EngageView() {
             <span className="pull-open">{!pull.picks.length ? '' : left ? `${left} open` : <button className="link" aria-expanded={!collapsed} onClick={() => setOpenPulls(x => ({ ...x, [pull.at]: !x[pull.at] }))}>All handled{collapsed ? ', show' : ', hide'}</button>}</span></h2>
           {!pull.picks.length ? <p className="engage-empty">Nothing worth a reply in this pull.</p> : !collapsed && <ol className="picks">{pull.picks.map(p =>
             <PickRow key={p.id} p={p} pullAt={pull.at} mark={marks[p.id]} selected={selected === p.id} expanded={!!expanded[p.id]}
-              rowRef={el => { if (el) rows.current.set(p.id, el); else rows.current.delete(p.id); }}
-              onSelect={() => setSelected(p.id)} onToggle={() => setExpanded(x => ({ ...x, [p.id]: !x[p.id] }))}
-              onMark={s => act(p.id, s)} onUndo={() => undo(p.id)} />)}</ol>}
+              onSelect={() => setSelected(p.id)} onToggle={() => toggle(p.id)} onMark={s => act(p.id, s)} onUndo={() => undo(p.id)} />)}</ol>}
         </section>;
       })}
   </section>;

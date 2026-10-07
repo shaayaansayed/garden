@@ -1,9 +1,9 @@
-import { CREDITS_PER_DOLLAR, TwitterApi, tweetTime } from './twitterapi';
-import type { XTweet, XUser } from './twitterapi';
-import { Jev, choice, noul, score } from './jev';
-import type { Answers, Question } from './jev';
+import { CREDITS_PER_DOLLAR, tweetTime } from './twitterapi';
+import type { TwitterApi, XTweet } from './twitterapi';
+import { choice, noul, score } from './jev';
+import type { Jev, Question } from './jev';
 
-// Daily X engagement finder: monitors a pool of healthcare accounts, has Jev judge posts and people, writes a vault note.
+// X engagement finder: monitors a pool of healthcare accounts, has Jev judge their posts for the Engage tab and outside accounts for the pool.
 export interface Member {
   handle: string; id?: string; name?: string; bio?: string; followers?: number; role?: string; topics?: string[]; fit?: number;
   added: string; source: 'seed' | 'expand' | 'manual'; lastSeen?: string; lastExpanded?: string;
@@ -28,10 +28,7 @@ export interface Store {
   get<T>(key: string): Promise<T | undefined>;
   put<T>(key: string, value: T): Promise<void>;
 }
-export interface EngageConfig {
-  dir: string; timezone: string; monthlyCredits: number; myHandle: string;
-  minFollowers?: number; maxFollowers?: number; picks?: number;
-}
+export interface EngageConfig { dir: string; timezone: string; monthlyCredits: number; myHandle: string }
 export interface EngageDeps {
   store: Store;
   twitter: () => TwitterApi;
@@ -45,9 +42,9 @@ export interface EngageDeps {
 
 const KEYS = { pool: 'engage:pool', candidates: 'engage:candidates', judged: 'engage:judged', seen: 'engage:seen', state: 'engage:state', today: 'engage:today' };
 const HOUR = 3_600_000, DAY = 24 * HOUR;
-const HANDLES_PER_QUERY = 15, PAGES_PER_QUERY = 2, MAX_JUDGED_TWEETS = 300;
-const EXPAND_MEMBERS = 8, EXPAND_JUDGE = 15, MAX_ADDS = 8, MIN_OVERLAP = 2, PRUNE_DAYS = 45, REJUDGE_DAYS = 90;
-// Who is commenting. Jev reads this once per batch to judge expertise fit; keep it short and factual.
+const HANDLES_PER_QUERY = 15, PAGES_PER_QUERY = 2, MAX_JUDGED_TWEETS = 300, PICKS = 7;
+const EXPAND_MEMBERS = 8, EXPAND_JUDGE = 15, MAX_ADDS = 8, MIN_OVERLAP = 2, MIN_FOLLOWERS = 1_000, PRUNE_DAYS = 45, REJUDGE_DAYS = 90;
+// Who is commenting. Jev reads this with every post to judge expertise fit; keep it short and factual.
 export const COMMENTER = 'Founder of a healthcare robotics startup focused on hospital and care operations. Previously five years as growth lead at ClosedLoop, a healthcare AI company that built risk-stratification and predictive models for health systems, payers, and value-based care organizations, improving care protocols and clinical operations workflows (risk stratification, medication management, ICU triage, care management programs) and winning the CMS AI Health Outcomes Challenge. Sold AI into health systems and payers from the vendor side and now runs a startup, so knows health tech go-to-market and fundraising first-hand. Has evaluated, deployed, and run clinical AI programs inside health systems and knows quality measures and the workflows behind them. Former Bridgewater investment associate. Machine learning research background. Writes evidence-driven essays on clinical AI explainability and evaluation, hospice and Medicare payment incentives, and Medicaid enrollment.';
 // One table drives both scorers. post: weight when ranking a post for the daily picks. admit: weight when judging a person for the feed.
 // Healthcare AI gets a slight edge in the picks (1.2), since it is where Shay most wants to be seen.
@@ -114,7 +111,7 @@ const EXPERTISE = [
   'Direct: the post is squarely in one of the commenter\'s areas',
   'First-hand: the commenter has built, sold, or analyzed exactly this',
 ];
-// The six questions Jev answers about every pulled post. Code turns the answers into a reply score.
+// The questions Jev answers about every pulled post. Code turns the answers into a reply score.
 const POST_QUESTIONS: Record<string, Question> = {
   lane: { type: 'choice', instructions: 'Which lane does `post` belong to?', criteria: Object.fromEntries(Object.entries(LANES).map(([k, [d]]) => [k, d])) },
   claim: { type: 'choice', instructions: 'What kind of post is `post`?', criteria: Object.fromEntries(Object.entries(CLAIMS).map(([k, [d]]) => [k, d])) },
@@ -126,6 +123,13 @@ const POST_QUESTIONS: Record<string, Question> = {
   heated: { type: 'noul', instructions: 'Would replying to `post` drag `commenter` into a partisan or personal fight?',
     criteria: { true: 'The post attacks or mocks a party, politician, official, or person, assigns partisan blame, is about elections, or uses insults', false: 'The post analyzes policy, data, or business, even if it sharply criticizes a decision or names who made it' } },
 };
+// The questions Jev answers about each expansion candidate. Topics mirror the ranking lanes so the pool grows toward accounts whose posts Shay can answer.
+const ACCOUNT_QUESTIONS: Record<string, Question> = {
+  individual: { type: 'noul', instructions: 'Is this account a single named person rather than a company, publication, podcast, or community account?' },
+  promotional: { type: 'noul', instructions: 'Are `recent_posts` mostly promotional announcements, event plugs, or link drops rather than opinions, analysis, or discussion?' },
+  role: { type: 'choice', instructions: 'Based on `bio`, which role best describes this person?', criteria: ROLES },
+};
+for (const [k, v] of Object.entries(TOPICS)) ACCOUNT_QUESTIONS[`topic_${k}`] = { type: 'noul', instructions: { question: `Do \`bio\` and \`recent_posts\` show this person regularly discussing \`topic\`?`, topic: v } };
 // Heat lowers a post's score in proportion: 0.6 heat costs 30%. Only near-certain insults are dropped outright.
 const HEAT_WEIGHT = 0.5, HEAT_LIMIT = 0.85;
 const MIN_STRENGTH = 1.2; // with 7 picks per run and two runs a day, this lands at 5 to 14 picks on a normal day
@@ -140,6 +144,8 @@ export function postText(t: { text: string; entities?: XTweet['entities'] }): st
 }
 export const clean = (handle: string) => handle.trim().replace(/^@/, '').replace(/^(https?:\/\/)?(www\.)?(x|twitter)\.com\//i, '').split(/[/?]/)[0] ?? '';
 const key = (handle: string) => clean(handle).toLowerCase();
+const HANDLE = /^\w{1,15}$/;
+const monthCredits = (state: EngageState, month: string) => state.monthly?.month === month ? state.monthly.credits : 0;
 export const band = (n?: number) => n === undefined ? 'unknown' : n < 1_000 ? 'under 1k' : n < 5_000 ? '1k-5k' : n < 20_000 ? '5k-20k' : n < 100_000 ? '20k-100k' : n < 500_000 ? '100k-500k' : 'over 500k';
 export const short = (n?: number) => n === undefined ? '?' : n >= 1_000_000 ? `${(n / 1e6).toFixed(1)}M` : n >= 1_000 ? `${Math.round(n / 1e3)}k` : String(n);
 
@@ -148,16 +154,18 @@ export class Engage {
   constructor(private deps: EngageDeps) { this.now = deps.now ?? (() => new Date()); }
 
   private get config() { return this.deps.config; }
-  private today(at = this.now()) { return at.toLocaleDateString('en-CA', { timeZone: this.config.timezone }); }
+  private today() { return this.now().toLocaleDateString('en-CA', { timeZone: this.config.timezone }); }
 
-  async pool(): Promise<Member[]> {
+  async pool(): Promise<Member[]> { return (await this.load()).members; }
+
+  // The stored pool and its members sorted by handle. An empty pool is reseeded from the bundled list, and that call returns seed order.
+  private async load(): Promise<{ pool: Record<string, Member>; members: Member[] }> {
     const pool = await this.deps.store.get<Record<string, Member>>(KEYS.pool);
-    if (pool && Object.keys(pool).length) return Object.values(pool).sort((a, b) => a.handle.localeCompare(b.handle));
-    const added = this.now().toISOString();
-    const seeded: Record<string, Member> = {};
+    if (pool && Object.keys(pool).length) return { pool, members: Object.values(pool).sort((a, b) => a.handle.localeCompare(b.handle)) };
+    const added = this.now().toISOString(), seeded: Record<string, Member> = {};
     for (const h of this.deps.seeds.map(clean).filter(Boolean)) seeded[key(h)] = { handle: h, added, source: 'seed', lastSeen: added };
     await this.deps.store.put(KEYS.pool, seeded);
-    return Object.values(seeded);
+    return { pool: seeded, members: Object.values(seeded) };
   }
 
   async todayPulls(): Promise<EngageToday> {
@@ -167,18 +175,16 @@ export class Engage {
 
   async status(): Promise<EngageState & { members: number; spentUsd: number }> {
     const state = await this.deps.store.get<EngageState>(KEYS.state) ?? {};
-    const month = this.today().slice(0, 7);
-    const credits = state.monthly?.month === month ? state.monthly.credits : 0;
+    const credits = monthCredits(state, this.today().slice(0, 7));
     return { ...state, members: (await this.pool()).length, spentUsd: Math.round(credits / CREDITS_PER_DOLLAR * 100) / 100 };
   }
 
   async add(handles: string[], source: Member['source'] = 'manual'): Promise<{ added: string[]; existing: string[] }> {
-    await this.pool();
-    const pool = await this.deps.store.get<Record<string, Member>>(KEYS.pool) ?? {};
+    const { pool } = await this.load();
     const added: string[] = [], existing: string[] = [];
     const at = this.now().toISOString();
     for (const raw of handles) {
-      const h = clean(raw); if (!/^[A-Za-z0-9_]{1,15}$/.test(h)) continue;
+      const h = clean(raw); if (!HANDLE.test(h)) continue;
       if (pool[key(h)]) existing.push(h); else { pool[key(h)] = { handle: h, added: at, source, lastSeen: at }; added.push(h); }
     }
     await this.deps.store.put(KEYS.pool, pool);
@@ -187,12 +193,11 @@ export class Engage {
   }
 
   async remove(handles: string[]): Promise<string[]> {
-    await this.pool();
-    const pool = await this.deps.store.get<Record<string, Member>>(KEYS.pool) ?? {};
+    const { pool } = await this.load();
     const judged = await this.deps.store.get<Record<string, Judgment>>(KEYS.judged) ?? {};
     const removed: string[] = [];
     for (const raw of handles) {
-      const h = clean(raw), k = key(h); if (!/^[A-Za-z0-9_]{1,15}$/.test(h)) continue;
+      const h = clean(raw), k = key(h); if (!HANDLE.test(h)) continue;
       removed.push(pool[k]?.handle ?? h); delete pool[k];
       judged[k] = { at: this.now().toISOString(), accepted: false, fit: 0 }; // Never add a removed account automatically.
     }
@@ -212,45 +217,44 @@ export class Engage {
     return count;
   }
 
-  private async log(line: string) {
-    const state = await this.deps.store.get<EngageState>(KEYS.state) ?? {};
-    state.changes = [line, ...(state.changes ?? [])].slice(0, 40);
+  // Merges `patch` into the stored state and prepends `change`, if any, to the change log.
+  private async log(change?: string, patch: EngageState = {}): Promise<EngageState> {
+    const state = { ...await this.deps.store.get<EngageState>(KEYS.state), ...patch };
+    if (change) state.changes = [change, ...(state.changes ?? [])].slice(0, 40);
     await this.deps.store.put(KEYS.state, state);
+    return state;
   }
 
-  private async withBudget<T>(kind: 'daily' | 'expand', fn: (twitter: TwitterApi) => Promise<T>): Promise<T | { skipped: string }> {
+  private async withBudget<T>(kind: 'daily' | 'expand', fn: (twitter: TwitterApi, state: EngageState) => Promise<T>): Promise<T | { skipped: string }> {
     const state = await this.deps.store.get<EngageState>(KEYS.state) ?? {};
     const month = this.today().slice(0, 7);
-    const spent = state.monthly?.month === month ? state.monthly.credits : 0;
-    if (spent >= this.config.monthlyCredits) {
+    if (monthCredits(state, month) >= this.config.monthlyCredits) {
       state.lastError = `Monthly twitterapi.io budget reached (${month}); ${kind} run skipped.`;
       await this.deps.store.put(KEYS.state, state);
       return { skipped: state.lastError };
     }
     const twitter = this.deps.twitter();
+    let failure: string | undefined;
     try {
-      return await fn(twitter);
+      return await fn(twitter, state);
     } catch (error) {
-      const fresh = await this.deps.store.get<EngageState>(KEYS.state) ?? {};
-      fresh.lastError = `${this.now().toISOString()} ${kind}: ${error instanceof Error ? error.message : 'failed'}`;
-      await this.deps.store.put(KEYS.state, fresh);
+      failure = `${this.now().toISOString()} ${kind}: ${error instanceof Error ? error.message : 'failed'}`;
       throw error;
     } finally {
+      // Re-read: the run and any pool edits made meanwhile have written state since the start.
       const fresh = await this.deps.store.get<EngageState>(KEYS.state) ?? {};
-      const credits = (fresh.monthly?.month === month ? fresh.monthly.credits : 0) + twitter.credits;
-      fresh.monthly = { month, credits }; fresh.lastRun = this.now().toISOString();
+      if (failure) fresh.lastError = failure;
+      fresh.monthly = { month, credits: monthCredits(fresh, month) + twitter.credits }; fresh.lastRun = this.now().toISOString();
       await this.deps.store.put(KEYS.state, fresh);
     }
   }
 
-  // Daily: search the pool's posts since the last run, judge them, write the day's note.
+  // Twice daily: search the pool's posts since the last run, judge the fresh ones, and store the pull for the Engage tab.
   async daily() {
-    return this.withBudget('daily', async twitter => {
-      const members = await this.pool();
-      const pool = await this.deps.store.get<Record<string, Member>>(KEYS.pool) ?? {};
-      const state = await this.deps.store.get<EngageState>(KEYS.state) ?? {};
+    return this.withBudget('daily', async (twitter, state) => {
+      const { pool, members } = await this.load();
       const seen = await this.deps.store.get<Record<string, string>>(KEYS.seen) ?? {};
-      const nowMs = this.now().getTime();
+      const nowMs = this.now().getTime(), at = new Date(nowMs).toISOString();
       const since = Math.max(state.lastDaily ? Date.parse(state.lastDaily) - HOUR : 0, nowMs - 36 * HOUR);
       if (!state.myFollowers || !state.lastDaily || nowMs - Date.parse(state.lastDaily) > 7 * DAY) {
         const me = await twitter.user(this.config.myHandle).catch(() => null);
@@ -270,27 +274,24 @@ export class Engage {
       }
       for (const t of tweets.values()) {
         const m = pool[key(t.author.userName)]; if (!m) continue;
-        Object.assign(m, profile(t.author), { lastSeen: new Date(Math.max(tweetTime(t), Date.parse(m.lastSeen ?? '') || 0)).toISOString() });
+        Object.assign(m, { id: t.author.id, name: t.author.name, bio: t.author.description, followers: t.author.followers,
+          lastSeen: new Date(Math.max(tweetTime(t), Date.parse(m.lastSeen ?? '') || 0)).toISOString() });
       }
       const fresh = [...tweets.values()].filter(t => !seen[t.id] && !t.isReply && !t.retweeted_tweet && pool[key(t.author.userName)]
         && (t.lang ?? 'en') === 'en' && t.text.replace(/https?:\S+/g, '').trim().length >= 40 && nowMs - tweetTime(t) < 30 * HOUR)
         .sort((a, b) => tweetTime(b) - tweetTime(a)).slice(0, MAX_JUDGED_TWEETS);
       const picks = await this.judgeTweets(fresh, pool, nowMs);
-      const date = this.today();
-      const stored = await this.deps.store.get<EngageToday>(KEYS.today);
-      const pulls = stored?.date === date ? stored.pulls : [];
-      pulls.push({ at: new Date(nowMs).toISOString(), scanned: tweets.size, judged: fresh.length, picks: picks.map(({ drop, ...p }) => p) });
+      const { date, pulls } = await this.todayPulls();
+      pulls.push({ at, scanned: tweets.size, judged: fresh.length, picks: picks.map(({ drop, ...p }) => p) });
       await this.deps.store.put(KEYS.today, { date, pulls });
       const cutoff = nowMs - 4 * DAY;
-      for (const [id, at] of Object.entries(seen)) if (Date.parse(at) < cutoff) delete seen[id];
-      for (const p of fresh) seen[p.id] = new Date(nowMs).toISOString(); // judged once; a later pull never re-scores it
+      for (const [id, seenAt] of Object.entries(seen)) if (Date.parse(seenAt) < cutoff) delete seen[id];
+      for (const p of fresh) seen[p.id] = at; // judged once; a later pull never re-scores it
       const pruned = this.prune(pool, nowMs);
       await this.deps.store.put(KEYS.seen, seen);
       await this.deps.store.put(KEYS.pool, pool);
-      const latest = await this.deps.store.get<EngageState>(KEYS.state) ?? {};
-      Object.assign(latest, { lastDaily: new Date(nowMs).toISOString(), lastError: undefined, myFollowers: state.myFollowers });
-      if (pruned.length) latest.changes = [`${date} pruned ${pruned.map(h => '@' + h).join(' ')} (no posts in ${PRUNE_DAYS} days)`, ...(latest.changes ?? [])].slice(0, 40);
-      await this.deps.store.put(KEYS.state, latest);
+      await this.log(pruned.length ? `${date} pruned ${pruned.map(h => '@' + h).join(' ')} (no posts in ${PRUNE_DAYS} days)` : undefined,
+        { lastDaily: at, lastError: undefined, myFollowers: state.myFollowers });
       return { date, picks: picks.length, scanned: tweets.size, judged: fresh.length, credits: twitter.credits, pruned };
     });
   }
@@ -304,24 +305,21 @@ export class Engage {
     return pruned;
   }
 
-  // One tweet per Jev call: the state is just this post and its author, so every question points straight at it.
   private async judgeTweets(tweets: XTweet[], pool: Record<string, Member>, nowMs: number): Promise<Pick[]> {
     const rows: Pick[] = [], queue = [...tweets];
-    const worker = async () => {
-      for (let t = queue.shift(); t; t = queue.shift()) {
-        const state = { commenter: COMMENTER, author: { name: t.author.name, handle: t.author.userName, bio: (t.author.description ?? '').slice(0, 200) },
-          post: postText(t).slice(0, 1200), quoted: t.quoted_tweet ? postText(t.quoted_tweet).slice(0, 400) : undefined };
-        rows.push(this.scoreTweet(t, await this.deps.jev.ask(state, POST_QUESTIONS), pool, nowMs));
-      }
-    };
+    const worker = async () => { for (let t = queue.shift(); t; t = queue.shift()) rows.push(await this.judgeTweet(t, pool, nowMs)); };
     await Promise.all(Array.from({ length: 4 }, worker));
     this.deps.onJudged?.(rows);
     const picks = rows.filter(r => !r.drop).sort((a, b) => b.strength - a.strength);
     const perAuthor: Record<string, number> = {};
-    return picks.filter(p => (perAuthor[p.handle] = (perAuthor[p.handle] ?? 0) + 1) <= 2).slice(0, this.config.picks ?? 7);
+    return picks.filter(p => (perAuthor[p.handle] = (perAuthor[p.handle] ?? 0) + 1) <= 2).slice(0, PICKS);
   }
 
-  private scoreTweet(t: XTweet, answers: Answers, pool: Record<string, Member>, nowMs: number): Pick {
+  // One tweet per Jev call: the state is just this post and its author, so every question points straight at it.
+  private async judgeTweet(t: XTweet, pool: Record<string, Member>, nowMs: number): Promise<Pick> {
+    const text = postText(t);
+    const answers = await this.deps.jev.ask({ commenter: COMMENTER, author: { name: t.author.name, handle: t.author.userName, bio: (t.author.description ?? '').slice(0, 200) },
+      post: text.slice(0, 1200), quoted: t.quoted_tweet ? postText(t.quoted_tweet).slice(0, 400) : undefined }, POST_QUESTIONS);
     const lane = choice(answers.lane, 'not_healthcare'), claim = choice(answers.claim, 'personal');
     const hook = choice(answers.hook, 'none'), angle = choice(answers.angle, 'none');
     const laneWeight = LANES[lane]?.[1] ?? 0, claimWeight = CLAIMS[claim]?.[1] ?? 0;
@@ -336,18 +334,16 @@ export class Engage {
     const strength = Math.round(3 * substance * freshness(ageHours) * crowd(replies) * author * (1 - HEAT_WEIGHT * heat) * 100) / 100;
     const drop = !laneWeight ? 'off lane' : !claimWeight ? 'personal post' : heat >= HEAT_LIMIT ? 'heated' : angle === 'none' ? 'nothing to add' : strength < MIN_STRENGTH ? 'below threshold' : undefined;
     return { id: t.id, url: t.url ?? `https://x.com/${t.author.userName}/status/${t.id}`, handle: t.author.userName, name: t.author.name,
-      followers: t.author.followers, role: m?.role, ageHours, replies, likes: t.likeCount ?? 0, text: postText(t),
+      followers: t.author.followers, role: m?.role, ageHours, replies, likes: t.likeCount ?? 0, text,
       lane: lane.replaceAll('_', ' '), claim, hook: hook.replaceAll('_', ' '), angle: angle.replaceAll('_', ' '), strength, drop, heat: Math.round(heat * 100) / 100 };
   }
 
   // Weekly: walk who the pool follows, score the overlap, judge the best candidates, grow the pool.
   async expand() {
-    return this.withBudget('expand', async twitter => {
-      const members = await this.pool();
-      const pool = await this.deps.store.get<Record<string, Member>>(KEYS.pool) ?? {};
+    return this.withBudget('expand', async (twitter, state) => {
+      const { pool, members } = await this.load();
       const candidates = await this.deps.store.get<Record<string, Candidate>>(KEYS.candidates) ?? {};
       const judged = await this.deps.store.get<Record<string, Judgment>>(KEYS.judged) ?? {};
-      const state = await this.deps.store.get<EngageState>(KEYS.state) ?? {};
       const nowMs = this.now().getTime(), at = new Date(nowMs).toISOString(), date = this.today();
       const due = members.sort((a, b) => (Date.parse(a.lastExpanded ?? '') || 0) - (Date.parse(b.lastExpanded ?? '') || 0)).slice(0, EXPAND_MEMBERS);
       for (const m of due) {
@@ -358,32 +354,30 @@ export class Engage {
           Object.assign(c, { name: u.name, bio: u.description, followers: u.followers, count: c.count + 1 });
           candidates[k] = c;
         }
-        pool[key(m.handle)].lastExpanded = at;
+        m.lastExpanded = at;
       }
       for (const [k, c] of Object.entries(candidates)) if (c.count < MIN_OVERLAP && nowMs - Date.parse(c.firstSeen) > 60 * DAY) delete candidates[k];
-      const min = this.config.minFollowers ?? 1_000, max = this.config.maxFollowers ?? Math.max(300_000, 25 * (state.myFollowers ?? 0));
-      const shortlist = Object.values(candidates)
-        .filter(c => !pool[key(c.handle)] && c.count >= MIN_OVERLAP && (c.followers ?? 0) >= min && (c.followers ?? 0) <= max
-          && !(judged[key(c.handle)] && nowMs - Date.parse(judged[key(c.handle)].at) < REJUDGE_DAYS * DAY))
-        .sort((a, b) => b.count - a.count || (b.followers ?? 0) - (a.followers ?? 0)).slice(0, EXPAND_JUDGE);
+      const max = Math.max(300_000, 25 * (state.myFollowers ?? 0));
+      const shortlist = Object.entries(candidates)
+        .filter(([k, c]) => !pool[k] && c.count >= MIN_OVERLAP && (c.followers ?? 0) >= MIN_FOLLOWERS && (c.followers ?? 0) <= max
+          && !(judged[k] && nowMs - Date.parse(judged[k].at) < REJUDGE_DAYS * DAY))
+        .sort(([, a], [, b]) => b.count - a.count || (b.followers ?? 0) - (a.followers ?? 0)).slice(0, EXPAND_JUDGE);
       const added: string[] = [];
-      for (const c of shortlist) {
+      for (const [k, c] of shortlist) {
         const tweets = (await twitter.lastTweets(c.handle)).filter(t => !t.retweeted_tweet);
         const recent = tweets.filter(t => nowMs - tweetTime(t) < 14 * DAY).length;
         const verdict = recent >= 3 ? await this.judgeAccount(c, tweets) : { fit: 0, role: 'other', topics: [] as string[] };
-        judged[key(c.handle)] = { at, accepted: verdict.fit >= 0.6 && added.length < MAX_ADDS, fit: verdict.fit };
-        if (!judged[key(c.handle)].accepted) continue;
-        pool[key(c.handle)] = { handle: c.handle, name: c.name, bio: c.bio, followers: c.followers, role: verdict.role, topics: verdict.topics, fit: verdict.fit,
+        const accepted = verdict.fit >= 0.6 && added.length < MAX_ADDS;
+        judged[k] = { at, accepted, fit: verdict.fit };
+        if (!accepted) continue;
+        pool[k] = { handle: c.handle, name: c.name, bio: c.bio, followers: c.followers, role: verdict.role, topics: verdict.topics, fit: verdict.fit,
           added: at, source: 'expand', lastSeen: at };
         added.push(`@${c.handle} (${verdict.role}, ${verdict.topics.join('/') || 'healthcare'}, ${short(c.followers)} followers, followed by ${c.count} pool members)`);
       }
       await this.deps.store.put(KEYS.pool, pool);
       await this.deps.store.put(KEYS.candidates, candidates);
       await this.deps.store.put(KEYS.judged, judged);
-      const latest = await this.deps.store.get<EngageState>(KEYS.state) ?? {};
-      latest.lastExpand = at; latest.lastError = undefined;
-      if (added.length) latest.changes = [`${date} added ${added.join('; ')}`, ...(latest.changes ?? [])].slice(0, 40);
-      await this.deps.store.put(KEYS.state, latest);
+      const latest = await this.log(added.length ? `${date} added ${added.join('; ')}` : undefined, { lastExpand: at, lastError: undefined });
       const path = `${this.config.dir}/Pool.md`;
       const existing = await this.deps.github.read(path);
       await this.deps.github.write(path, this.renderPool(Object.values(pool), latest), existing?.sha ?? null, `Engage pool ${date}`);
@@ -393,14 +387,7 @@ export class Engage {
 
   private async judgeAccount(c: Candidate, tweets: XTweet[]): Promise<{ fit: number; role: string; topics: string[] }> {
     const state = { handle: c.handle, name: c.name, bio: c.bio, followers: band(c.followers), recent_posts: tweets.slice(0, 8).map(t => t.text.slice(0, 400)) };
-    // Topics mirror the ranking lanes so the pool grows toward accounts whose posts Shay can answer.
-    const questions: Record<string, Question> = {
-      individual: { type: 'noul', instructions: 'Is this account a single named person rather than a company, publication, podcast, or community account?' },
-      promotional: { type: 'noul', instructions: 'Are `recent_posts` mostly promotional announcements, event plugs, or link drops rather than opinions, analysis, or discussion?' },
-      role: { type: 'choice', instructions: 'Based on `bio`, which role best describes this person?', criteria: ROLES },
-    };
-    for (const [k, v] of Object.entries(TOPICS)) questions[`topic_${k}`] = { type: 'noul', instructions: { question: `Do \`bio\` and \`recent_posts\` show this person regularly discussing \`topic\`?`, topic: v } };
-    const answers = await this.deps.jev.ask(state, questions);
+    const answers = await this.deps.jev.ask(state, ACCOUNT_QUESTIONS);
     const topics = Object.keys(TOPICS).filter(k => noul(answers[`topic_${k}`]) >= 0.5);
     const topic = Math.max(...Object.keys(TOPICS).map(k => noul(answers[`topic_${k}`]) * SUBLANES[k].admit));
     const fit = noul(answers.individual) < 0.5 || noul(answers.promotional) >= 0.7 ? 0 : Math.round(topic * 100) / 100;
@@ -414,8 +401,4 @@ export class Engage {
       '| Handle | Name | Followers | Role | Topics | Source | Added | Last post |', '|---|---|---|---|---|---|---|---|', ...rows, '',
       '## Changes', ...(state.changes ?? []).map(c => `- ${c}`), ''].join('\n');
   }
-}
-
-function profile(u: XUser): Partial<Member> {
-  return { id: u.id, name: u.name, bio: u.description, followers: u.followers };
 }

@@ -36,7 +36,7 @@ test('rank rewards lane share, discussion, audience overlap, and cadence while p
   expect(quiet.score).toBeLessThan(good.score * 0.6);
   expect(offLane.score).toBe(0);
   expect(rank({ ...base, laneShare: 0.2 }).score).toBeCloseTo(good.score / 2, 1); // lane fit is full at 40% of posts
-  expect(rank({ ...base, followers: 3_000, medianLikes: 120 }).score).toBe(good.score); // under 5k and 5k to 100k weigh the same
+  expect(rank({ ...base, followers: 3_000 }).score).toBe(good.score); // under 5k and 5k to 100k weigh the same
   expect(rank({ ...base, followers: 250_000, medianLikes: 120 * 12.5 }).score).toBeCloseTo(good.score * 0.75, 1); // over 100k counts three quarters
 });
 

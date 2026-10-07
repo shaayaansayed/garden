@@ -10,7 +10,6 @@ export type Answer =
 export type Answers = Record<string, Answer | undefined>;
 
 export class Jev {
-  calls = 0;
   inputTokens = 0;
   constructor(private key: string, private send: typeof fetch = fetch.bind(globalThis), private model = 'jev-latest') {}
 
@@ -18,7 +17,6 @@ export class Jev {
     if (!this.key) throw new Error('TypeSafe is not configured.');
     const body = JSON.stringify({ model: this.model, state, questions });
     for (let attempt = 0; ; attempt++) {
-      this.calls++;
       const r = await this.send('https://api.typesafe.ai/v1/systemone', {
         method: 'POST', body, signal: AbortSignal.timeout(60_000),
         headers: { Authorization: `Bearer ${this.key}`, 'Content-Type': 'application/json' },

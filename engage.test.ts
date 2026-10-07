@@ -10,22 +10,20 @@ const user = (userName: string, followers = 12_000, description = 'healthcare in
 const tweet = (id: string, author: string, text: string, hoursAgo = 2, extra: Partial<XTweet> = {}): XTweet => ({
   id, text, author: user(author), createdAt: new Date(NOW.getTime() - hoursAgo * 3_600_000).toUTCString(), replyCount: 3, likeCount: 20, ...extra,
 });
-function memoryStore(): Store & { data: Map<string, unknown> } {
+function memoryStore(): Store {
   const data = new Map<string, unknown>();
-  return { data, get: async <T,>(k: string) => structuredClone(data.get(k)) as T | undefined, put: async (k, v) => { data.set(k, structuredClone(v)); } };
+  return { get: async <T,>(k: string) => structuredClone(data.get(k)) as T | undefined, put: async (k, v) => { data.set(k, structuredClone(v)); } };
 }
 interface World { queries: string[]; followings: Record<string, XUser[]>; lastTweets: Record<string, XTweet[]>; searchTweets: XTweet[]; jevCalls: number; judge: (state: any, questions: Record<string, any>) => Record<string, unknown>; files: Record<string, string>; writes: number; lastJevBody?: string }
+// Jev's answer per question key; every other key (heated, the topics) is a noul.
+const ANSWERS: Record<string, unknown> = {
+  lane: { type: 'choice', choice: 'value_based_care' }, claim: { type: 'choice', choice: 'argument' }, hook: { type: 'choice', choice: 'missing_tradeoff' },
+  contestable: { type: 'noul', noul: 0.8 }, expertise: { type: 'score', score: 2.5 }, angle: { type: 'choice', choice: 'add_evidence' },
+  individual: { type: 'noul', noul: 0.95 }, promotional: { type: 'noul', noul: 0.1 }, role: { type: 'choice', choice: 'investor' },
+};
 function world(): World {
   return { queries: [], followings: {}, lastTweets: {}, searchTweets: [], jevCalls: 0, files: {}, writes: 0,
-    judge: (_state, questions) => Object.fromEntries(Object.keys(questions).map(k => [k,
-      k.endsWith('lane') ? { type: 'choice', choice: 'value_based_care', probabilities: {}, confidence: 0.8 }
-      : k.endsWith('claim') ? { type: 'choice', choice: 'argument', probabilities: {}, confidence: 0.8 }
-      : k.endsWith('hook') ? { type: 'choice', choice: 'missing_tradeoff', probabilities: {}, confidence: 0.7 }
-      : k.endsWith('contestable') ? { type: 'noul', noul: 0.8 }
-      : k.endsWith('expertise') ? { type: 'score', score: 2.5, probabilities: {}, confidence: 0.8 }
-      : k.endsWith('angle') ? { type: 'choice', choice: 'add_evidence', probabilities: {}, confidence: 0.7 }
-      : k === 'individual' ? { type: 'noul', noul: 0.95 } : k === 'promotional' ? { type: 'noul', noul: 0.1 }
-      : k === 'role' ? { type: 'choice', choice: 'investor', probabilities: {}, confidence: 0.8 } : { type: 'noul', noul: k === 'topic_value_based_care' ? 0.8 : 0.2 }])) };
+    judge: (_state, questions) => Object.fromEntries(Object.keys(questions).map(k => [k, ANSWERS[k] ?? { type: 'noul', noul: k === 'topic_value_based_care' ? 0.8 : 0.2 }])) };
 }
 function fetcher(w: World): typeof fetch {
   return (async (input: string | URL | Request, init?: RequestInit) => {
@@ -35,7 +33,7 @@ function fetcher(w: World): typeof fetch {
       w.jevCalls++;
       w.lastJevBody = String(init?.body);
       const body = JSON.parse(String(init?.body)) as { state: unknown; questions: Record<string, unknown> };
-      return Response.json({ model: 'jev-1.13.0', answers: w.judge(body.state, body.questions), usage: { input_tokens: 500, output_tokens: 10 } });
+      return Response.json({ answers: w.judge(body.state, body.questions), usage: { input_tokens: 500 } });
     }
     if (url.pathname === '/twitter/user/info') return Response.json({ status: 'success', data: user(url.searchParams.get('userName')!, 900) });
     if (url.pathname === '/twitter/tweet/advanced_search') {
@@ -44,12 +42,12 @@ function fetcher(w: World): typeof fetch {
       return Response.json({ tweets: w.searchTweets.filter(t => handles.includes(t.author.userName.toLowerCase())), has_next_page: false, next_cursor: '' });
     }
     if (url.pathname === '/twitter/user/followings') return Response.json({ followings: (w.followings[url.searchParams.get('userName')!] ?? []).map(u => ({ id: u.id, screen_name: u.userName, name: u.name, description: u.description, followers_count: u.followers })), has_next_page: false, next_cursor: '' });
-    if (url.pathname === '/twitter/user/last_tweets') return Response.json({ status: 'success', message: '', tweets: w.lastTweets[url.searchParams.get('userName')!] ?? [], has_next_page: false });
+    if (url.pathname === '/twitter/user/last_tweets') return Response.json({ status: 'success', tweets: w.lastTweets[url.searchParams.get('userName')!] ?? [], has_next_page: false });
     throw new Error('unexpected ' + url.href);
   }) as typeof fetch;
 }
-function engine(w: World, seeds = ['@alice', 'bob', 'https://x.com/carol'], monthlyCredits = 500_000, store = memoryStore()) {
-  const send = fetcher(w);
+function engine(w: World, seeds = ['@alice', 'bob', 'https://x.com/carol'], monthlyCredits = 500_000) {
+  const send = fetcher(w), store = memoryStore();
   const engage = new Engage({
     store, seeds, now: () => NOW, twitter: () => new TwitterApi('k', send), jev: new Jev('j', send),
     github: { read: async p => w.files[p] === undefined ? null : { sha: 'sha-' + w.files[p].length, content: w.files[p] },
@@ -69,7 +67,6 @@ test('handles are normalized and the pool seeds itself once', async () => {
   expect((await engage.status()).changes?.[0]).toContain('removed @bob');
   expect(await engage.reset()).toBe(3);
   expect((await engage.pool()).map(m => m.handle)).toEqual(['alice', 'bob', 'carol']); // reseeded from the file; bob's block only affects admission
-
 });
 
 test('daily run batches searches, judges fresh posts, stores the pull for the Engage tab, and never repeats a pick', async () => {
@@ -116,20 +113,19 @@ test('daily run batches searches, judges fresh posts, stores the pull for the En
 
 test('the monthly credit budget stops runs and failures record an error without hiding spend', async () => {
   const w = world();
-  const { engage, store } = engine(w, ['alice'], 30);
+  const { engage } = engine(w, ['alice'], 30);
   w.searchTweets = [tweet('1', 'alice', 'A long enough healthcare post about Medicare Advantage risk adjustment and coding intensity.')];
   const first = await engage.daily();
   expect('skipped' in first).toBe(false);
   const second = await engage.daily();
   expect('skipped' in second && second.skipped).toContain('budget');
   expect((await engage.status()).lastError).toContain('budget');
-  const broken = engine(w, ['alice'], 500_000, memoryStore());
+  const broken = engine(w, ['alice']);
   w.judge = () => { throw new Error('provider detail'); };
   await expect(broken.engage.daily()).rejects.toThrow();
   const state = await broken.store.get<{ lastError: string; monthly: { credits: number } }>('engage:state');
   expect(state!.lastError).toContain('daily');
   expect(state!.monthly.credits).toBeGreaterThan(0);
-  expect(store.data.size).toBeGreaterThan(0);
 });
 
 test('expansion scores overlap, judges with Jev, adds accepted accounts, and respects removals', async () => {

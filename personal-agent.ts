@@ -26,10 +26,6 @@ export interface AgentRequest {
   id: string; message: string; created: string;
   status: 'queued' | 'running' | 'done' | 'unanswered'; text?: string; reason?: string;
 }
-export interface EngageRunResult {
-  kind: 'daily' | 'expand'; skipped?: string; date?: string; picks?: number; scanned?: number; judged?: number;
-  credits?: number; pruned?: number; expanded?: number; candidates?: number; added?: number;
-}
 const result = (value: unknown) => ({ content: [{ type: 'text' as const, text: JSON.stringify(value) }] });
 
 export class PersonalAgent extends DurableObject<Env> {
@@ -41,7 +37,7 @@ export class PersonalAgent extends DurableObject<Env> {
   private engage = new Engage({
     store: this.ctx.storage, seeds: seeds.split('\n').filter(l => l.trim() && !l.startsWith('#')),
     twitter: () => new TwitterApi(this.env.TWITTERAPI_KEY ?? ''), jev: new Jev(this.env.TYPESAFE_API_KEY ?? ''),
-    github: { read: p => this.github.read(p), write: (p, c, sha, m) => this.github.write(p, c, sha, m) },
+    github: this.github,
     config: { dir: this.env.ENGAGE_DIR, timezone: this.env.AGENT_TIMEZONE, myHandle: this.env.X_HANDLE, monthlyCredits: Number(this.env.ENGAGE_MONTHLY_CREDITS) || 500_000 },
   });
   private engageLine: Promise<unknown> = Promise.resolve();
@@ -161,16 +157,16 @@ export class PersonalAgent extends DurableObject<Env> {
 
   async engageStatus() { await this.lifecycle.start(); return this.engage.status(); }
   async engageToday() { await this.lifecycle.start(); return this.engage.todayPulls(); }
-  async engageRun(kind: 'daily' | 'expand'): Promise<EngageRunResult> {
+  async engageRun(kind: 'daily' | 'expand') {
     await this.lifecycle.start();
     // One run at a time; a second trigger waits rather than double-spending credits.
-    const run = async (): Promise<EngageRunResult> => {
+    const next = this.engageLine.then(async () => {
       const outcome = kind === 'expand' ? await this.engage.expand() : await this.engage.daily();
-      if ('skipped' in outcome) return { kind, skipped: outcome.skipped };
+      // Report counts rather than handle lists.
       if ('expanded' in outcome) return { kind, ...outcome, expanded: outcome.expanded.length };
-      return { kind, ...outcome, pruned: outcome.pruned.length };
-    };
-    const next = this.engageLine.then(run);
+      if ('pruned' in outcome) return { kind, ...outcome, pruned: outcome.pruned.length };
+      return { kind, ...outcome };
+    });
     this.engageLine = next.catch(() => {});
     return next;
   }

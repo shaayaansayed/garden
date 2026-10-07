@@ -2,7 +2,6 @@
 // recent posts judged by Jev, then the top 300 by score.
 // Run: bun bootstrap-feed.ts [--dry-run] [--judge 1500] [--feed 300] [--min 1000] [--max 300000] [--interval 250] [--only a,b,c].
 // Keys from .dev.vars or the environment. --only judges just those handles and prints them, for checking the judge.
-import { mkdir } from 'node:fs/promises';
 import { TwitterApi, CREDITS_PER_DOLLAR, tweetTime } from './twitterapi';
 import type { XTweet, XUser } from './twitterapi';
 import { Jev, choice, noul, score } from './jev';
@@ -37,7 +36,7 @@ export const POST_LANES: Record<string, string> = {
   ai_general: 'AI, software, or technology not specific to healthcare',
   not_healthcare: 'not about healthcare or technology: politics, sports, personal life, general business or markets',
 };
-const POST_WEIGHT = (lane: string) => SUBLANES[lane]?.admit ?? (lane === 'healthcare_other' ? 0.25 : 0);
+const admitWeight = (lane: string) => SUBLANES[lane]?.admit ?? (lane === 'healthcare_other' ? 0.25 : 0);
 
 export function shortlist(candidates: Candidate[], limit: number, min: number, max: number): Candidate[] {
   return candidates
@@ -82,7 +81,7 @@ export function judgeAnswers(c: Candidate, s: ReturnType<typeof activity>, answe
   const counts: Record<string, number> = {};
   for (const lane of perPost) counts[lane] = (counts[lane] ?? 0) + 1;
   const lanes = Object.keys(SUBLANES).filter(l => (counts[l] ?? 0) >= 2).sort((a, b) => counts[b] - counts[a]);
-  const laneShare = perPost.length ? round(perPost.reduce((sum, lane) => sum + POST_WEIGHT(lane), 0) / perPost.length) : 0;
+  const laneShare = perPost.length ? round(perPost.reduce((sum, lane) => sum + admitWeight(lane), 0) / perPost.length) : 0;
   return { ...c, postsPerWeek: s.postsPerWeek, medianLikes: s.medianLikes, links: s.links, lanes, laneShare, role: choice(answers.role),
     individual: noul(answers.individual), promotional: noul(answers.promotional), slop: noul(answers.slop),
     discussion: score(answers.discussion), audience: score(answers.audience) };
@@ -102,10 +101,11 @@ export function rank(j: Omit<Judged, 'fit' | 'score'>): Pick<Judged, 'fit' | 'sc
   return { fit, score: round(fit * cadence * engagement * size) };
 }
 const round = (n: number) => Math.round(n * 100) / 100;
+const usd = (credits: number) => '$' + (credits / CREDITS_PER_DOLLAR).toFixed(2);
 
 export function render(ranked: Judged[], feed: number, credits: number): string {
   const rows = ranked.map((j, i) => `| ${i + 1} | @${j.handle} | ${j.name.replace(/\|/g, ' ')} | ${short(j.followers)} | ${j.role} | ${j.lanes.join(', ') || '-'} | ${Math.round(j.laneShare * 100)}% | ${j.postsPerWeek}/wk | ${j.overlap} | ${j.score.toFixed(2)} | ${j.seed ? 'seed' : ''} |`);
-  return ['# Feed candidates', '', `Top ${feed} of ${ranked.length} judged accounts, ranked by lane share × quality × cadence × engagement × size. Lane share is the part of their recent posts that falls in Shay's lanes. Crawl cost $${(credits / CREDITS_PER_DOLLAR).toFixed(2)}. Strike anyone wrong, then copy seeds.txt over engage-seeds.txt.`, '',
+  return ['# Feed candidates', '', `Top ${feed} of ${ranked.length} judged accounts, ranked by lane share × quality × cadence × engagement × size. Lane share is the part of their recent posts that falls in Shay's lanes. Crawl cost ${usd(credits)}. Strike anyone wrong, then copy seeds.txt over engage-seeds.txt.`, '',
     '| # | Handle | Name | Followers | Role | Lanes | Lane share | Cadence | Followed by seeds | Score | |', '|---|---|---|---|---|---|---|---|---|---|---|', ...rows.slice(0, feed), '',
     '## Below the line', '', ...rows.slice(feed, feed + 100), ''].join('\n');
 }
@@ -116,6 +116,7 @@ export async function loadEnv() {
   if (await file.exists()) for (const line of (await file.text()).split('\n')) {
     const m = line.match(/^\s*([A-Z_]+)\s*=\s*"?([^"\n]*)"?\s*$/); if (m && !env[m[1]]) env[m[1]] = m[2];
   }
+  if (!env.TWITTERAPI_KEY || !env.TYPESAFE_API_KEY) throw new Error('Set TWITTERAPI_KEY and TYPESAFE_API_KEY in .dev.vars or the environment.');
   return env;
 }
 // Every successful HTTP response is cached on disk by URL (GET) or body (POST), so an interrupted run resumes without re-spending.
@@ -141,34 +142,33 @@ async function main() {
   const dry = process.argv.includes('--dry-run'), judgeLimit = arg('judge', 1500), feedSize = arg('feed', 300), min = arg('min', 1_000), max = arg('max', 300_000);
   const onlyAt = process.argv.indexOf('--only'), only = onlyAt > 0 ? new Set(process.argv[onlyAt + 1].split(',').map(h => clean(h).toLowerCase())) : null;
   const env = await loadEnv();
-  if (!env.TWITTERAPI_KEY || !env.TYPESAFE_API_KEY) throw new Error('Set TWITTERAPI_KEY and TYPESAFE_API_KEY in .dev.vars or the environment.');
-  const dir = '.engage-bootstrap'; await mkdir(`${dir}/http`, { recursive: true });
+  const dir = '.engage-bootstrap';
   const stats = { hits: 0, misses: 0 }, send = cachingFetch(dir, stats);
   const twitter = new TwitterApi(env.TWITTERAPI_KEY, send, 10_000, arg('interval', 250)), jev = new Jev(env.TYPESAFE_API_KEY, send);
   const seeds = (await Bun.file('engage-seeds.txt').text()).split('\n').map(clean).filter(l => l && !l.startsWith('#'));
-  const now = Date.now();
+  const now = Date.now(), seedKeys = new Set(seeds.map(s => s.toLowerCase()));
   const candidates = new Map<string, Candidate>();
-  const upsert = (u: XUser, patch: Partial<Candidate>) => {
+  const upsert = (u: XUser, hit?: 'overlap' | 'keyword') => {
     const k = u.userName.toLowerCase();
-    const c = candidates.get(k) ?? { handle: u.userName, name: u.name ?? '', bio: u.description ?? '', followers: u.followers ?? 0, overlap: 0, keyword: 0, seed: seeds.some(s => s.toLowerCase() === k) };
+    const c = candidates.get(k) ?? { handle: u.userName, name: '', bio: '', followers: 0, overlap: 0, keyword: 0, seed: seedKeys.has(k) };
     Object.assign(c, { name: u.name ?? c.name, bio: u.description ?? c.bio, followers: u.followers ?? c.followers });
-    c.overlap += patch.overlap ?? 0; c.keyword += patch.keyword ?? 0; candidates.set(k, c);
+    if (hit) c[hit]++; candidates.set(k, c);
   };
   for (const seed of seeds) {
     const users: XUser[] = []; let cursor = '';
     for (let page = 0; page < 5; page++) { const r = await twitter.followings(seed, cursor); users.push(...r.users); if (!r.next) break; cursor = r.next; }
-    for (const u of users) upsert(u, { overlap: 1 });
+    for (const u of users) upsert(u, 'overlap');
     const me = await twitter.user(seed);
-    if (me) upsert(me, {});
-    if (!only) console.error(`followings ${seed}: ${users.length} (candidates ${candidates.size}, $${(twitter.credits / CREDITS_PER_DOLLAR).toFixed(2)}, cache ${stats.hits}/${stats.hits + stats.misses})`);
+    if (me) upsert(me);
+    if (!only) console.error(`followings ${seed}: ${users.length} (candidates ${candidates.size}, ${usd(twitter.credits)}, cache ${stats.hits}/${stats.hits + stats.misses})`);
   }
-  for (const [i, query] of QUERIES.entries()) for (const type of ['Latest', 'Top'] as const) {
+  for (const query of QUERIES) for (const type of ['Latest', 'Top'] as const) {
     const tweets: XTweet[] = []; let cursor = '';
     for (let page = 0; page < 3; page++) { const r = await twitter.search(`${query} lang:en -filter:replies -filter:retweets`, cursor); tweets.push(...r.tweets); if (!r.next) break; cursor = r.next; }
-    for (const t of tweets) if (t.author?.userName) upsert(t.author, { keyword: 1 });
+    for (const t of tweets) if (t.author?.userName) upsert(t.author, 'keyword');
   }
   const list = only ? [...candidates.values()].filter(c => only.has(c.handle.toLowerCase())) : shortlist([...candidates.values()], judgeLimit, min, max);
-  console.error(`${candidates.size} candidates, ${list.length} ${only ? 'selected' : 'shortlisted'}; crawl so far $${(twitter.credits / CREDITS_PER_DOLLAR).toFixed(2)}; judging costs about $${(list.length * 300 / CREDITS_PER_DOLLAR).toFixed(2)} more before cache.`);
+  console.error(`${candidates.size} candidates, ${list.length} ${only ? 'selected' : 'shortlisted'}; crawl so far ${usd(twitter.credits)}; judging costs about ${usd(list.length * 300)} more before cache.`);
   if (dry) return;
   const judged: Judged[] = [];
   await pool(list, 4, async c => {
@@ -177,7 +177,7 @@ async function main() {
     const state = { commenter: COMMENTER, account: { name: c.name, handle: c.handle, bio: c.bio.slice(0, 200) }, posts: s.texts };
     const base = judgeAnswers(c, s, await jev.ask(state, questionsFor(s.texts.length)));
     judged.push({ ...base, ...rank(base) });
-    if (!only && judged.length % 50 === 0) console.error(`judged ${judged.length} ($${(twitter.credits / CREDITS_PER_DOLLAR).toFixed(2)}, Jev ${jev.inputTokens} tokens)`);
+    if (!only && judged.length % 50 === 0) console.error(`judged ${judged.length} (${usd(twitter.credits)}, Jev ${jev.inputTokens} tokens)`);
   });
   judged.sort((a, b) => b.score - a.score);
   if (only) {
@@ -188,6 +188,6 @@ async function main() {
   await Bun.write(`${dir}/review.md`, render(judged, feedSize, twitter.credits));
   await Bun.write(`${dir}/seeds.txt`, ['# Built by bootstrap-feed.ts on ' + new Date().toISOString().slice(0, 10), ...judged.slice(0, feedSize).map(j => j.handle)].join('\n') + '\n');
   await Bun.write(`${dir}/judged.json`, JSON.stringify(judged, null, 1));
-  console.error(`Done. ${judged.length} judged, ${judged.filter(j => j.score > 0).length} above zero, top ${feedSize} in ${dir}/seeds.txt, review in ${dir}/review.md. Spent $${(twitter.credits / CREDITS_PER_DOLLAR).toFixed(2)} this run, ${stats.hits} of ${stats.hits + stats.misses} calls from cache, Jev ${jev.inputTokens} fresh input tokens.`);
+  console.error(`Done. ${judged.length} judged, ${judged.filter(j => j.score > 0).length} above zero, top ${feedSize} in ${dir}/seeds.txt, review in ${dir}/review.md. Spent ${usd(twitter.credits)} this run, ${stats.hits} of ${stats.hits + stats.misses} calls from cache, Jev ${jev.inputTokens} fresh input tokens.`);
 }
 if (import.meta.main) await main();

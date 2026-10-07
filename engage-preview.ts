@@ -1,8 +1,7 @@
 // Local dry run of the daily scan against live X data. Prints the pull the Engage tab would show, then every judged post
 // with its score and why it was dropped, for tuning. Saves the pull to .engage-bootstrap/preview/today.json.
 // Run: bun engage-preview.ts [--at 2026-10-07T17:00:00Z]. Reusing the same --at replays searches and Jev answers from cache for free.
-import { mkdir, rm } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { rm } from 'node:fs/promises';
 import { Engage, clean } from './engage';
 import type { Pick, Store } from './engage';
 import { TwitterApi, CREDITS_PER_DOLLAR } from './twitterapi';
@@ -12,9 +11,7 @@ import { cachingFetch, loadEnv } from './bootstrap-feed';
 const atArg = process.argv.indexOf('--at');
 const at = new Date(atArg > 0 ? process.argv[atArg + 1] : new Date().toISOString().slice(0, 16) + ':00Z');
 const env = await loadEnv();
-if (!env.TWITTERAPI_KEY || !env.TYPESAFE_API_KEY) throw new Error('Set TWITTERAPI_KEY and TYPESAFE_API_KEY in .dev.vars or the environment.');
 const dir = '.engage-bootstrap', out = `${dir}/preview`;
-await mkdir(`${dir}/http`, { recursive: true });
 await rm(out, { recursive: true, force: true }); // each preview is one clean run
 const stats = { hits: 0, misses: 0 }, send = cachingFetch(dir, stats);
 const data = new Map<string, unknown>();
@@ -28,13 +25,12 @@ const engage = new Engage({
   twitter: () => (twitter = new TwitterApi(env.TWITTERAPI_KEY, send, 150, 300)), jev,
   github: {
     read: async p => { const f = Bun.file(`${out}/${p}`); return await f.exists() ? { sha: 'local', content: await f.text() } : null; },
-    write: async (p, content) => { await mkdir(dirname(`${out}/${p}`), { recursive: true }); await Bun.write(`${out}/${p}`, content); return {}; },
+    write: async (p, content) => { await Bun.write(`${out}/${p}`, content); return {}; },
   },
   config: { dir: 'Engage', timezone: 'America/New_York', monthlyCredits: 500_000, myHandle: env.X_HANDLE ?? 'ShaayaanS' },
 });
 const result = await engage.daily();
 const today = await engage.todayPulls();
-await mkdir(out, { recursive: true });
 await Bun.write(`${out}/today.json`, JSON.stringify(today, null, 1));
 for (const [i, p] of (today.pulls.at(-1)?.picks ?? []).entries()) console.log(`${i + 1}. ${p.name} @${p.handle} · ${Math.round(p.ageHours)}h · ${p.replies} replies · ${p.lane} · ${p.angle} on ${p.hook} · ${p.strength}\n   ${p.text.replace(/\s+/g, ' ').slice(0, 160)}\n`);
 console.log('## Every judged post\n');

@@ -43,7 +43,7 @@ export async function handleRequest(request: Request, env: Env, verify = authent
     if (url.pathname === '/personal/engage' && request.method === 'GET') return json(await agent.engageStatus());
     if (url.pathname === '/personal/engage/today' && request.method === 'GET') return json(await agent.engageToday());
     if (url.pathname === '/personal/engage/run' && request.method === 'POST') {
-      const kind = new URL(request.url).searchParams.get('kind') === 'expand' ? 'expand' : 'daily';
+      const kind = url.searchParams.get('kind') === 'expand' ? 'expand' : 'daily';
       return json(await agent.engageRun(kind), 202);
     }
     if (url.pathname === '/personal/requests') {

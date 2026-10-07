@@ -1,16 +1,15 @@
 // Minimal read-only twitterapi.io client with a credit meter. Never touches Shay's X login.
 export interface XUser {
-  id: string; userName: string; name: string; description?: string; location?: string;
-  followers: number; following?: number; statusesCount?: number; isBlueVerified?: boolean; createdAt?: string;
+  id: string; userName: string; name: string; description?: string;
+  followers: number; following?: number; statusesCount?: number; createdAt?: string;
 }
 export interface XTweet {
-  id: string; url?: string; text: string; createdAt: string; lang?: string;
-  replyCount?: number; likeCount?: number; retweetCount?: number; quoteCount?: number; viewCount?: number;
-  isReply?: boolean; inReplyToId?: string; author: XUser; quoted_tweet?: XTweet | null; retweeted_tweet?: XTweet | null;
+  id: string; url?: string; text: string; createdAt: string; lang?: string; replyCount?: number; likeCount?: number;
+  isReply?: boolean; author: XUser; quoted_tweet?: XTweet | null; retweeted_tweet?: XTweet | null;
   entities?: { urls?: { url: string; expanded_url?: string }[] };
 }
 type Legacy = { screen_name?: string; followers_count?: number; friends_count?: number; statuses_count?: number; created_at?: string };
-type Page<K extends string, T> = { [key in K]?: T[] } & { has_next_page?: boolean; next_cursor?: string; status?: string; msg?: string; message?: string; data?: unknown };
+type Page<K extends string, T> = { [key in K]?: T[] } & { has_next_page?: boolean; next_cursor?: string; data?: unknown };
 
 export const CREDITS_PER_DOLLAR = 100_000;
 // Documented rates: $0.15/1k tweets, $0.18/1k profiles, $0.01/1k followings at page size 200, $0.00015 minimum per call.
@@ -20,6 +19,7 @@ export class TwitterApi {
   credits = 0;
   calls = 0;
   private nextAt = 0;
+  private free = false; // the last response was a cache replay
   constructor(private key: string, private send: typeof fetch = fetch.bind(globalThis), private maxCalls = 150, private minIntervalMs = 0) {}
 
   private async get<T>(path: string, params: Record<string, string | number | undefined>): Promise<T> {
@@ -53,7 +53,6 @@ export class TwitterApi {
     this.free = r.headers.get('x-cache') === 'hit';
     return data;
   }
-  private free = false;
   private charge(credits: number) { if (!this.free) this.credits += credits; }
 
   async user(userName: string): Promise<XUser | null> {
@@ -86,7 +85,4 @@ export class TwitterApi {
   }
 }
 
-export function tweetTime(tweet: { createdAt: string }): number {
-  const t = Date.parse(tweet.createdAt);
-  return Number.isNaN(t) ? 0 : t;
-}
+export const tweetTime = (tweet: { createdAt: string }) => Date.parse(tweet.createdAt) || 0;
