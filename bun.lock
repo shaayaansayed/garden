@@ -8,6 +8,7 @@
         "@assistant-ui/react": "^0.15.23",
         "@earendil-works/pi-ai": "1.0.1",
         "@earendil-works/pi-durable": "1.0.1",
+        "@modelcontextprotocol/client": "2.0.0",
         "agents": "0.26.0",
         "jose": "^6.2.12",
         "lucide-react": "^1.51.0",
