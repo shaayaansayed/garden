@@ -164,7 +164,7 @@ async function main() {
   }
   for (const query of QUERIES) for (const type of ['Latest', 'Top'] as const) {
     const tweets: XTweet[] = []; let cursor = '';
-    for (let page = 0; page < 3; page++) { const r = await twitter.search(`${query} lang:en -filter:replies -filter:retweets`, cursor); tweets.push(...r.tweets); if (!r.next) break; cursor = r.next; }
+    for (let page = 0; page < 3; page++) { const r = await twitter.search(`${query} lang:en -filter:replies -filter:retweets`, cursor, type); tweets.push(...r.tweets); if (!r.next) break; cursor = r.next; }
     for (const t of tweets) if (t.author?.userName) upsert(t.author, 'keyword');
   }
   const list = only ? [...candidates.values()].filter(c => only.has(c.handle.toLowerCase())) : shortlist([...candidates.values()], judgeLimit, min, max);

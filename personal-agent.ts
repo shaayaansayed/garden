@@ -60,9 +60,9 @@ export class PersonalAgent extends DurableObject<Env> {
             parameters: Type.Object({ action: Type.Union([Type.Literal('list'), Type.Literal('add'), Type.Literal('remove'), Type.Literal('reset')]), handles: Type.Optional(Type.Array(Type.String())) }),
             replay: 'safe', executionMode: 'sequential',
             execute: async ({ action, handles }) => {
-              if (action === 'add') return result(await this.engage.add(handles ?? []));
-              if (action === 'remove') return result({ removed: await this.engage.remove(handles ?? []) });
-              if (action === 'reset') return result({ cleared: await this.engage.reset() });
+              if (action === 'add') return result(await this.queued(() => this.engage.add(handles ?? [])));
+              if (action === 'remove') return result({ removed: await this.queued(() => this.engage.remove(handles ?? [])) });
+              if (action === 'reset') return result({ cleared: await this.queued(() => this.engage.reset()) });
               return result({ status: await this.engage.status(), members: (await this.engage.pool()).map(m => ({ handle: m.handle, role: m.role, followers: m.followers, source: m.source, lastSeen: m.lastSeen })) });
             } }),
           defineTool({ name: 'engage_run', description: 'Run the X engagement engine now. daily adds a pull of posts worth replying to in the portal Engage tab; expand grows the pool from who members follow. Costs twitterapi.io credits; do not repeat on failure.',
@@ -155,20 +155,24 @@ export class PersonalAgent extends DurableObject<Env> {
 
   async stop(id: string) { await this.lifecycle.start(); return this.harness.abort({ operationId: id }); }
 
-  async engageStatus() { await this.lifecycle.start(); return this.engage.status(); }
-  async engageToday() { await this.lifecycle.start(); return this.engage.todayPulls(); }
+  // Engage reads and writes only its own storage keys, so these never start the chat agent or reconnect Sunsama.
+  async engageStatus() { return this.engage.status(); }
+  async engageToday() { return this.engage.todayPulls(); }
+  // Pulls and pool edits run one at a time, so neither saves an older copy of the pool over the other.
+  // A second pull waits rather than double-spending credits.
+  private queued<T>(fn: () => Promise<T>): Promise<T> {
+    const next = this.engageLine.then(fn);
+    this.engageLine = next.catch(() => {});
+    return next;
+  }
   async engageRun(kind: 'daily' | 'expand') {
-    await this.lifecycle.start();
-    // One run at a time; a second trigger waits rather than double-spending credits.
-    const next = this.engageLine.then(async () => {
+    return this.queued(async () => {
       const outcome = kind === 'expand' ? await this.engage.expand() : await this.engage.daily();
       // Report counts rather than handle lists.
       if ('expanded' in outcome) return { kind, ...outcome, expanded: outcome.expanded.length };
       if ('pruned' in outcome) return { kind, ...outcome, pruned: outcome.pruned.length };
       return { kind, ...outcome };
     });
-    this.engageLine = next.catch(() => {});
-    return next;
   }
 
   async sunsamaStatus() { return this.sunsama.status(); }

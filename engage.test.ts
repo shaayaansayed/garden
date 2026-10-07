@@ -46,10 +46,10 @@ function fetcher(w: World): typeof fetch {
     throw new Error('unexpected ' + url.href);
   }) as typeof fetch;
 }
-function engine(w: World, seeds = ['@alice', 'bob', 'https://x.com/carol'], monthlyCredits = 500_000) {
+function engine(w: World, seeds = ['@alice', 'bob', 'https://x.com/carol'], monthlyCredits = 500_000, now = () => NOW) {
   const send = fetcher(w), store = memoryStore();
   const engage = new Engage({
-    store, seeds, now: () => NOW, twitter: () => new TwitterApi('k', send), jev: new Jev('j', send),
+    store, seeds, now, twitter: () => new TwitterApi('k', send), jev: new Jev('j', send),
     github: { read: async p => w.files[p] === undefined ? null : { sha: 'sha-' + w.files[p].length, content: w.files[p] },
       write: async (p, c, sha, m) => { expect(sha).toBe(w.files[p] === undefined ? null : 'sha-' + w.files[p].length); expect(m.length).toBeLessThan(200); w.files[p] = c; w.writes++; return {}; } },
     config: { dir: 'Engage', timezone: 'America/New_York', monthlyCredits, myHandle: 'ShaayaanS' },
@@ -134,7 +134,8 @@ test('expansion scores overlap, judges with Jev, adds accepted accounts, and res
   w.followings = { alice: [dan, eve, huge, tiny, gone], bob: [dan, eve, huge, tiny, gone], carol: [dan] };
   const posts = (h: string) => Array.from({ length: 5 }, (_, i) => tweet('p' + h + i, h, 'Post about payer economics and value-based care number ' + i, 24 * i));
   w.lastTweets = { dan: posts('dan'), eve: posts('eve').slice(0, 1), gone: posts('gone') };
-  const { engage, store } = engine(w);
+  let clock = NOW.getTime();
+  const { engage, store } = engine(w, undefined, undefined, () => new Date(clock));
   await engage.remove(['gone']);
   const result = await engage.expand();
   if ('skipped' in result) throw new Error(result.skipped);
@@ -151,6 +152,14 @@ test('expansion scores overlap, judges with Jev, adds accepted accounts, and res
   const again = await engage.expand();
   if ('skipped' in again) throw new Error(again.skipped);
   expect(again.judged).toBe(0);
+  clock += 100 * 86_400_000; // past the 90-day rejudge window, with fresh posts from gone
+  w.lastTweets.gone = Array.from({ length: 5 }, (_, i) => tweet('late' + i, 'gone', 'Post about payer economics and value-based care number ' + i, -100 * 24 + 24 * i));
+  const later = await engage.expand();
+  if ('skipped' in later) throw new Error(later.skipped);
+  expect(later.judged).toBe(1); // eve is re-judged; gone stays removed
+  expect((await store.get<Record<string, unknown>>('engage:pool'))!.gone).toBeUndefined();
+  expect(await engage.add(['gone'])).toEqual({ added: ['gone'], existing: [] });
+  expect((await store.get<Record<string, { removed?: boolean }>>('engage:judged'))!.gone).toBeUndefined();
 });
 
 test('post text shows real links, drops trailing media links, and unescapes X entities', () => {

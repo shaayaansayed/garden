@@ -9,7 +9,7 @@ export interface Member {
   added: string; source: 'seed' | 'expand' | 'manual'; lastSeen?: string; lastExpanded?: string;
 }
 interface Candidate { handle: string; name?: string; bio?: string; followers?: number; count: number; firstSeen: string }
-interface Judgment { at: string; accepted: boolean; fit: number }
+interface Judgment { at: string; accepted: boolean; fit: number; removed?: boolean }
 export interface EngageState {
   lastDaily?: string; lastExpand?: string; lastError?: string; lastRun?: string;
   monthly?: { month: string; credits: number }; myFollowers?: number; changes?: string[];
@@ -181,13 +181,15 @@ export class Engage {
 
   async add(handles: string[], source: Member['source'] = 'manual'): Promise<{ added: string[]; existing: string[] }> {
     const { pool } = await this.load();
+    const judged = await this.deps.store.get<Record<string, Judgment>>(KEYS.judged) ?? {};
     const added: string[] = [], existing: string[] = [];
     const at = this.now().toISOString();
     for (const raw of handles) {
       const h = clean(raw); if (!HANDLE.test(h)) continue;
-      if (pool[key(h)]) existing.push(h); else { pool[key(h)] = { handle: h, added: at, source, lastSeen: at }; added.push(h); }
+      if (pool[key(h)]) existing.push(h); else { pool[key(h)] = { handle: h, added: at, source, lastSeen: at }; added.push(h); delete judged[key(h)]; }
     }
     await this.deps.store.put(KEYS.pool, pool);
+    if (added.length) await this.deps.store.put(KEYS.judged, judged); // adding by hand lifts an earlier removal
     if (added.length) await this.log(`${this.today()} added ${added.map(h => '@' + h).join(' ')} (${source})`);
     return { added, existing };
   }
@@ -199,7 +201,7 @@ export class Engage {
     for (const raw of handles) {
       const h = clean(raw), k = key(h); if (!HANDLE.test(h)) continue;
       removed.push(pool[k]?.handle ?? h); delete pool[k];
-      judged[k] = { at: this.now().toISOString(), accepted: false, fit: 0 }; // Never add a removed account automatically.
+      judged[k] = { at: this.now().toISOString(), accepted: false, fit: 0, removed: true }; // expansion never re-adds a removed account
     }
     await this.deps.store.put(KEYS.pool, pool);
     await this.deps.store.put(KEYS.judged, judged);
@@ -360,7 +362,7 @@ export class Engage {
       const max = Math.max(300_000, 25 * (state.myFollowers ?? 0));
       const shortlist = Object.entries(candidates)
         .filter(([k, c]) => !pool[k] && c.count >= MIN_OVERLAP && (c.followers ?? 0) >= MIN_FOLLOWERS && (c.followers ?? 0) <= max
-          && !(judged[k] && nowMs - Date.parse(judged[k].at) < REJUDGE_DAYS * DAY))
+          && !(judged[k] && (judged[k].removed || nowMs - Date.parse(judged[k].at) < REJUDGE_DAYS * DAY)))
         .sort(([, a], [, b]) => b.count - a.count || (b.followers ?? 0) - (a.followers ?? 0)).slice(0, EXPAND_JUDGE);
       const added: string[] = [];
       for (const [k, c] of shortlist) {

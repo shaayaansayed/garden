@@ -61,8 +61,8 @@ export class TwitterApi {
     return d.data?.id ? d.data : null;
   }
 
-  async search(query: string, cursor = ''): Promise<{ tweets: XTweet[]; next: string | null }> {
-    const d = await this.get<Page<'tweets', XTweet>>('/twitter/tweet/advanced_search', { query, queryType: 'Latest', cursor });
+  async search(query: string, cursor = '', queryType: 'Latest' | 'Top' = 'Latest'): Promise<{ tweets: XTweet[]; next: string | null }> {
+    const d = await this.get<Page<'tweets', XTweet>>('/twitter/tweet/advanced_search', { query, queryType, cursor });
     const tweets = d.tweets ?? [];
     this.charge(Math.max(MIN_CALL, tweets.length * TWEET));
     return { tweets, next: d.has_next_page && d.next_cursor ? d.next_cursor : null };
