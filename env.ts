@@ -17,4 +17,9 @@ export interface Env {
   AGENT_TIMEZONE: string;
   MAX_REQUESTS_PER_DAY: string;
   MAX_MODEL_CALLS_PER_DAY: string;
+  TWITTERAPI_KEY?: string;
+  TYPESAFE_API_KEY?: string;
+  X_HANDLE: string;
+  ENGAGE_DIR: string;
+  ENGAGE_MONTHLY_CREDITS: string;
 }

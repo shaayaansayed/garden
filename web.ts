@@ -30,6 +30,22 @@ export async function handleRequest(request: Request, env: Env, verify = authent
   if (!['GET', 'POST'].includes(request.method)) return json({ error: 'Method not allowed.' }, 405);
   try {
     const agent = env.PERSONAL_AGENT.getByName('shay');
+    const sunsama = '/personal/integrations/sunsama';
+    if (url.pathname === sunsama && request.method === 'GET') return json(await agent.sunsamaStatus());
+    if (url.pathname === sunsama + '/connect' && request.method === 'POST') return json(await agent.sunsamaConnect());
+    if (url.pathname === sunsama + '/disconnect' && request.method === 'POST') return json(await agent.sunsamaDisconnect());
+    if (url.pathname === sunsama + '/callback' && request.method === 'GET') {
+      const response = await agent.sunsamaCallback(request);
+      const headers = new Headers(response.headers);
+      for (const [key, value] of Object.entries(privateHeaders)) headers.set(key, value);
+      return new Response(response.body, { status: response.status, headers });
+    }
+    if (url.pathname === '/personal/engage' && request.method === 'GET') return json(await agent.engageStatus());
+    if (url.pathname === '/personal/engage/today' && request.method === 'GET') return json(await agent.engageToday());
+    if (url.pathname === '/personal/engage/run' && request.method === 'POST') {
+      const kind = new URL(request.url).searchParams.get('kind') === 'expand' ? 'expand' : 'daily';
+      return json(await agent.engageRun(kind), 202);
+    }
     if (url.pathname === '/personal/requests') {
       if (request.method === 'GET') return json(await agent.history());
       if (!request.headers.get('Content-Type')?.startsWith('application/json')) return json({ error: 'Expected JSON.' }, 415);
@@ -50,6 +66,7 @@ export async function handleRequest(request: Request, env: Env, verify = authent
     }
     return json({ error: 'Method not allowed.' }, 405);
   } catch (error) {
+    if (url.pathname.startsWith('/personal/integrations/sunsama')) return json({ error: 'Could not reach Sunsama. Try connecting again.' }, 503);
     const message = error instanceof Error ? error.message : '';
     if (message === 'Request body too large.') return json({ error: message }, 413);
     if (message === 'Daily request limit reached.') return json({ error: message }, 429);

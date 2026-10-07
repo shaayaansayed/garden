@@ -29,8 +29,12 @@
     "AGENT_MODEL": "gpt-6.1-sol",
     "AGENT_TIMEZONE": "America/New_York",
     "MAX_REQUESTS_PER_DAY": "50",
-    "MAX_MODEL_CALLS_PER_DAY": "200"
+    "MAX_MODEL_CALLS_PER_DAY": "200",
+    "X_HANDLE": "ShaayaanS",
+    "ENGAGE_DIR": "Engage",
+    "ENGAGE_MONTHLY_CREDITS": "500000"
   },
-  "rules": [{ "type": "Text", "globs": ["**/AGENTS.md", "**/.personal/*.txt"], "fallthrough": true }],
+  "triggers": { "crons": ["0 17 * * *", "0 22 * * *", "0 12 * * 1"] },
+  "rules": [{ "type": "Text", "globs": ["**/AGENTS.md", "**/.personal/*.txt", "**/engage-seeds.txt"], "fallthrough": true }],
   "observability": { "enabled": false }
 }

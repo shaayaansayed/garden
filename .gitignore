@@ -36,3 +36,4 @@ codex-auth.json
 .playwright-cli/
 !.dev.vars.example
 .personal/
+.engage-bootstrap/

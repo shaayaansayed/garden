@@ -58,8 +58,10 @@ exclude:
   - wrangler.jsonc
   - README.md
   - AGENTS.md
+  - INSTINCT.md
   - '*.ts'
   - '*.tsx'
   - personal.css
+  - engage-seeds.txt
   - '*.json'
   - mise.toml
