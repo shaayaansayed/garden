@@ -35,6 +35,8 @@
     "ENGAGE_MONTHLY_CREDITS": "500000"
   },
   "triggers": { "crons": ["0 17 * * *", "0 22 * * *"] },
+  // Workers Paid: a daily pull makes about 320 outbound calls (searches plus one Jev call per post).
+  "limits": { "subrequests": 2000, "cpu_ms": 60000 },
   "rules": [{ "type": "Text", "globs": ["**/AGENTS.md", "**/.personal/*.txt", "**/engage-seeds.txt"], "fallthrough": true }],
   "observability": { "enabled": false }
 }
