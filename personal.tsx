@@ -160,15 +160,14 @@ function PostText({ text, open, onToggle, oneLine }: { text: string; open: boole
     {!oneLine && (long || open) && <button className="text-toggle" aria-expanded={open} onClick={onToggle}>{open ? 'Show less' : 'Show more'}</button>}</>;
 }
 
-function PickRow({ p, rank, pullAt, mark, selected, expanded, onSelect, onToggle, onMark, onUndo, rowRef }: {
-  p: EngagePick; rank: number; pullAt: string; mark?: Marks[string]; selected: boolean; expanded: boolean;
+function PickRow({ p, pullAt, mark, selected, expanded, onSelect, onToggle, onMark, onUndo, rowRef }: {
+  p: EngagePick; pullAt: string; mark?: Marks[string]; selected: boolean; expanded: boolean;
   onSelect: () => void; onToggle: () => void; onMark: (s: MarkState) => void; onUndo: () => void; rowRef: (el: HTMLLIElement | null) => void;
 }) {
   const posted = Date.parse(pullAt) - p.ageHours * 3_600_000, hours = Math.max(0, Math.round((Date.now() - posted) / 3_600_000));
   const verb = angleVerbs[p.angle], hook = hookPhrases[p.hook];
-  return <li ref={rowRef} id={'pick-' + p.id} tabIndex={selected ? 0 : -1} aria-current={selected || undefined} onClick={e => { onSelect(); if (e.target === e.currentTarget || !(e.target as HTMLElement).closest('a, button')) e.currentTarget.focus({ preventScroll: true }); }}
+  return <li ref={rowRef} id={'pick-' + p.id} tabIndex={selected ? 0 : -1} aria-current={selected || undefined} aria-keyshortcuts="J K Enter D S U E" onClick={e => { onSelect(); if (e.target === e.currentTarget || !(e.target as HTMLElement).closest('a, button')) e.currentTarget.focus({ preventScroll: true }); }}
     className={'pick' + (selected ? ' selected' : '') + (mark ? ' handled' : '')}>
-    <span className="rank" aria-hidden="true">{mark ? (mark.state === 'skipped' ? '–' : <Check size={14} />) : rank}</span>
     <div className="pick-body">
       <div className="pick-head"><strong>{p.name}</strong><span>@{p.handle}</span>
         {p.followers !== undefined && <span className="num" aria-label={`${compact(p.followers)} followers`}>{compact(p.followers)}</span>}
@@ -177,12 +176,11 @@ function PickRow({ p, rank, pullAt, mark, selected, expanded, onSelect, onToggle
         <span className="lane">{laneNames[p.lane] ?? p.lane}</span></div>
       <PostText text={p.text} open={expanded} onToggle={onToggle} oneLine={!!mark} />
       {mark ? <p className="pick-status">{markLabels[mark.state]} {clock(mark.at)} <button className="link" onClick={e => { e.stopPropagation(); onUndo(); }}>Undo</button></p> : <>
-        {verb && <p className="angle"><MessageCircleReply size={16} aria-hidden="true" /><strong>{verb}</strong>{hook && <span>{hook}</span>}</p>}
+        {verb && <p className="angle"><strong>{verb}</strong>{hook && <span>{hook}</span>}</p>}
         <div className="pick-actions">
           <a className="reply" href={p.url} target="_blank" rel="noopener noreferrer" onClick={() => onMark('replied')}>Reply on X<ExternalLink size={15} aria-hidden="true" /><span className="sr-only"> (opens in a new tab)</span></a>
-          <button className="ghost bordered" onClick={e => { e.stopPropagation(); onMark('done'); }}>Done</button>
+          <button className="ghost" onClick={e => { e.stopPropagation(); onMark('done'); }}>Done</button>
           <button className="ghost" onClick={e => { e.stopPropagation(); onMark('skipped'); }}>Skip</button>
-          {selected && <span className="keys" aria-hidden="true"><kbd>j</kbd><kbd>k</kbd> move <kbd>↵</kbd> reply <kbd>d</kbd> done <kbd>s</kbd> skip <kbd>u</kbd> undo</span>}
         </div></>}
     </div>
   </li>;
@@ -247,10 +245,10 @@ function EngageView() {
       : pulls.map(pull => {
         const left = pull.picks.filter(p => !marks[p.id]).length, collapsed = pull.picks.length > 0 && !left && !openPulls[pull.at];
         return <section key={pull.at} className="pull" aria-labelledby={'pull-' + pull.at}>
-          <h2 id={'pull-' + pull.at} className="pull-head num"><span className="pull-time">{clock(pull.at)}</span><span className="pull-meta">{pull.picks.length} picks · {pull.scanned} scanned</span>
+          <h2 id={'pull-' + pull.at} className="pull-head num"><span className="pull-time">{clock(pull.at)}</span>
             <span className="pull-open">{!pull.picks.length ? '' : left ? `${left} open` : <button className="link" aria-expanded={!collapsed} onClick={() => setOpenPulls(x => ({ ...x, [pull.at]: !x[pull.at] }))}>All handled{collapsed ? ', show' : ', hide'}</button>}</span></h2>
-          {!pull.picks.length ? <p className="engage-empty">Nothing worth a reply in this pull.</p> : !collapsed && <ol className="picks">{pull.picks.map((p, i) =>
-            <PickRow key={p.id} p={p} rank={i + 1} pullAt={pull.at} mark={marks[p.id]} selected={selected === p.id} expanded={!!expanded[p.id]}
+          {!pull.picks.length ? <p className="engage-empty">Nothing worth a reply in this pull.</p> : !collapsed && <ol className="picks">{pull.picks.map(p =>
+            <PickRow key={p.id} p={p} pullAt={pull.at} mark={marks[p.id]} selected={selected === p.id} expanded={!!expanded[p.id]}
               rowRef={el => { if (el) rows.current.set(p.id, el); else rows.current.delete(p.id); }}
               onSelect={() => setSelected(p.id)} onToggle={() => setExpanded(x => ({ ...x, [p.id]: !x[p.id] }))}
               onMark={s => act(p.id, s)} onUndo={() => undo(p.id)} />)}</ol>}
@@ -357,12 +355,11 @@ function App() {
       <div className="brand"><span className="brand-mark"><Leaf size={23} aria-hidden="true" /></span><span>Shay’s Space<small>Personal</small></span><button className="icon mobile-close" aria-label="Close navigation" onClick={() => setMenu(false)}><X size={20} /></button></div>
       <nav aria-label="Personal"><a href="#agent" aria-current={view === 'agent' ? 'page' : undefined} onClick={() => setMenu(false)}><MessageSquare size={18} aria-hidden="true" />Agent<ChevronRight className="nav-arrow" size={15} /></a><a href="#activity" aria-current={view === 'activity' ? 'page' : undefined} onClick={() => setMenu(false)}><History size={18} aria-hidden="true" />Activity{count > 0 && <span className="count">{count}</span>}</a><a href="#engage" aria-current={view === 'engage' ? 'page' : undefined} onClick={() => setMenu(false)}><MessageCircleReply size={18} aria-hidden="true" />Engage</a></nav>
       <SunsamaConnection />
-      <div className="sidebar-note"><p>A little room for everything.</p><span>Your notes, questions, and things to take care of.</span></div>
       <div className="sidebar-bottom"><LockKeyhole size={15} aria-hidden="true" /><span>Private workspace</span><a href="/" aria-label="Go to public site">Public site</a></div>
     </aside>
     {menu && <button className="scrim" aria-label="Close navigation" onClick={() => setMenu(false)} />}
     <main id="main" inert={menu} className="workspace" tabIndex={-1}>
-      <header className="toolbar"><div className="page-title"><button className="icon mobile-menu" aria-label="Open navigation" aria-expanded={menu} onClick={() => setMenu(true)}><Menu size={21} /></button><span>Personal <span className="separator">/</span> <strong>{view === 'agent' ? 'Agent' : view === 'engage' ? 'Engage' : 'Activity'}</strong></span></div><span className="connection"><span className={count ? 'dot working' : 'dot'} />{count ? `${count} working` : 'Obsidian vault'}</span></header>
+      <header className={view === 'engage' ? 'toolbar bare' : 'toolbar'}><div className="page-title"><button className="icon mobile-menu" aria-label="Open navigation" aria-expanded={menu} onClick={() => setMenu(true)}><Menu size={21} /></button><span>Personal <span className="separator">/</span> <strong>{view === 'agent' ? 'Agent' : view === 'engage' ? 'Engage' : 'Activity'}</strong></span></div><span className="connection"><span className={count ? 'dot working' : 'dot'} />{count ? `${count} working` : 'Obsidian vault'}</span></header>
       {(error || syncError) && <div className="error" role="alert"><CircleAlert size={18} /><span>{error || syncError}</span><button className="quiet" onClick={() => void refreshRef.current()}>Reconnect</button></div>}
       <div className="sr-only" role="status" aria-live="polite">{notice}</div>
       {view === 'agent' ? <ThreadPrimitive.Root className="thread"><ThreadPrimitive.Viewport className="conversation">
