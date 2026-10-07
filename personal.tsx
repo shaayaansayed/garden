@@ -106,40 +106,98 @@ function Message() {
     {!user && <div className="message-actions">{active(row) ? <button className="quiet" disabled={stopping} onClick={async () => { setStopping(true); try { await stop(row.id); } finally { setStopping(false); } }}><Square size={13} aria-hidden="true" />{stopping ? 'Stopping…' : 'Stop task'}</button> : text && <button className="quiet" onClick={async () => { try { await navigator.clipboard.writeText(text); setCopied(true); setCopyError(false); setTimeout(() => setCopied(false), 2000); } catch { setCopyError(true); } }}><Copy size={14} aria-hidden="true" />{copyError ? 'Select text to copy' : copied ? 'Copied' : 'Copy reply'}</button>}</div>}
   </MessagePrimitive.Root>;
 }
-// Engage: today's posts worth a reply, one section per scheduled pull, newest pull first.
+// Engage: an inbox of today's posts worth a reply. Reply, Done, or Skip marks a post handled; marks live in this browser for the day.
 const laneNames: Record<string, string> = {
   'ai evaluation': 'AI evaluation', 'ai care delivery': 'AI in care delivery', 'ai adoption': 'AI adoption', quality: 'Quality measures',
   'clinical ops': 'Clinical ops', 'clinical workflows': 'Clinical workflows', 'value based care': 'Value-based care', 'payer pharmacy': 'Payers and pharmacy',
   'provider economics': 'Provider economics', 'public programs': 'Medicare and Medicaid', 'healthtech business': 'Health tech business', robotics: 'Robotics',
   'ai technical': 'General AI', 'startup general': 'Startups', 'healthcare other': 'Healthcare',
 };
-const angleVerbs: Record<string, string> = { 'ask question': 'Ask about', 'add evidence': 'Add evidence on', 'push back': 'Push back on', 'share experience': 'Share experience on' };
-const hookPhrases: Record<string, string> = { 'unstated assumption': 'the unstated assumption', 'missing tradeoff': 'the missing tradeoff', mechanism: 'how it actually works',
-  'data context': 'what the numbers leave out', implementation: 'how it plays out in practice' };
+const angleVerbs: Record<string, string> = { 'ask question': 'Ask', 'add evidence': 'Add evidence', 'push back': 'Push back', 'share experience': 'Share experience' };
+const hookPhrases: Record<string, string> = { 'unstated assumption': 'about the unstated assumption', 'missing tradeoff': 'on the missing tradeoff', mechanism: 'on how it actually works',
+  'data context': 'on what the numbers leave out', implementation: 'on how it plays out in practice' };
 const compact = (n?: number) => n === undefined ? '' : n >= 1_000_000 ? `${(n / 1e6).toFixed(1)}M` : n >= 1_000 ? `${Math.round(n / 1e3)}k` : String(n);
-function replyIdea(p: EngagePick) {
-  const verb = angleVerbs[p.angle], hook = hookPhrases[p.hook];
-  return verb && hook ? `${verb} ${hook}.` : verb ? `${verb} the main claim.` : '';
+const clock = (iso: string) => new Date(iso).toLocaleTimeString([], { timeZone, hour: 'numeric', minute: '2-digit' });
+// Pulls run at 17:00 and 22:00 UTC (wrangler.jsonc); show the next one in New York time.
+function nextPull(now = new Date()) {
+  const slots = [17, 22, 41].map(h => Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), h));
+  return clock(new Date(slots.find(t => t > now.getTime())!).toISOString());
 }
+
+type MarkState = 'replied' | 'done' | 'skipped';
+type Marks = Record<string, { state: MarkState; at: string }>;
+const markLabels: Record<MarkState, string> = { replied: 'Replied', done: 'Done', skipped: 'Skipped' };
+function useMarks(date?: string) {
+  const key = 'engage:marks:' + date;
+  const [marks, setMarks] = useState<Marks>({});
+  useEffect(() => {
+    if (!date) return;
+    try {
+      for (let i = localStorage.length - 1; i >= 0; i--) { const k = localStorage.key(i); if (k?.startsWith('engage:marks:') && k !== key) localStorage.removeItem(k); }
+      setMarks(JSON.parse(localStorage.getItem(key) || '{}'));
+    } catch { setMarks({}); }
+  }, [key]);
+  // Functional updates so quick successive marks never overwrite each other.
+  const update = (fn: (prev: Marks) => Marks) => setMarks(prev => { const next = fn(prev); try { localStorage.setItem(key, JSON.stringify(next)); } catch {} return next; });
+  return { marks, mark: (id: string, state: MarkState) => update(prev => ({ ...prev, [id]: { state, at: new Date().toISOString() } })),
+    unmark: (id: string) => update(prev => { const { [id]: _, ...rest } = prev; return rest; }) };
+}
+
 // Post text: real links and @mentions become links (React escapes everything else), long posts clamp with a toggle.
 const TOKEN = /(https?:\/\/[^\s<]+[^\s<.,:;"')\]!?]|(?<![\w@])@\w{1,15})/g;
 const linkify = (text: string) => text.split(TOKEN).map((part, i) => i % 2 === 0 ? part
   : <a key={i} href={part.startsWith('@') ? `https://x.com/${part.slice(1)}` : part} target="_blank" rel="noopener noreferrer">
     {part.startsWith('@') ? part : (s => s.length > 40 ? s.slice(0, 39) + '…' : s)(part.replace(/^https?:\/\/(www\.)?/, ''))}</a>);
-function PostText({ text }: { text: string }) {
+function PostText({ text, open, onToggle, oneLine }: { text: string; open: boolean; onToggle: () => void; oneLine?: boolean }) {
   const ref = useRef<HTMLParagraphElement>(null);
-  const [open, setOpen] = useState(false), [long, setLong] = useState(false);
+  const [long, setLong] = useState(false);
   useLayoutEffect(() => {
-    const el = ref.current; if (!el || open) return;
+    const el = ref.current; if (!el || open || oneLine) return;
     const check = () => setLong(el.scrollHeight > el.clientHeight + 1);
     check(); const ro = new ResizeObserver(check); ro.observe(el); return () => ro.disconnect();
-  }, [text, open]);
-  return <><p ref={ref} className={open ? 'pick-text' : 'pick-text clamped'}>{linkify(text.replace(/\n\s*\n+/g, '\n'))}</p>
-    {(long || open) && <button className="quiet more" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? 'Show less' : 'Show more'}</button>}</>;
+  }, [text, open, oneLine]);
+  return <><p ref={ref} className={'pick-text' + (oneLine ? ' one-line' : open ? '' : ' clamped')}>{linkify(text.replace(/\n\s*\n+/g, '\n'))}</p>
+    {!oneLine && (long || open) && <button className="text-toggle" aria-expanded={open} onClick={onToggle}>{open ? 'Show less' : 'Show more'}</button>}</>;
 }
+
+function PickRow({ p, rank, pullAt, mark, selected, expanded, onSelect, onToggle, onMark, onUndo, rowRef }: {
+  p: EngagePick; rank: number; pullAt: string; mark?: Marks[string]; selected: boolean; expanded: boolean;
+  onSelect: () => void; onToggle: () => void; onMark: (s: MarkState) => void; onUndo: () => void; rowRef: (el: HTMLLIElement | null) => void;
+}) {
+  const posted = Date.parse(pullAt) - p.ageHours * 3_600_000, hours = Math.max(0, Math.round((Date.now() - posted) / 3_600_000));
+  const verb = angleVerbs[p.angle], hook = hookPhrases[p.hook];
+  return <li ref={rowRef} id={'pick-' + p.id} tabIndex={selected ? 0 : -1} aria-current={selected || undefined} onClick={e => { onSelect(); if (e.target === e.currentTarget || !(e.target as HTMLElement).closest('a, button')) e.currentTarget.focus({ preventScroll: true }); }}
+    className={'pick' + (selected ? ' selected' : '') + (mark ? ' handled' : '')}>
+    <span className="rank" aria-hidden="true">{mark ? (mark.state === 'skipped' ? '–' : <Check size={14} />) : rank}</span>
+    <div className="pick-body">
+      <div className="pick-head"><strong>{p.name}</strong><span>@{p.handle}</span>
+        {p.followers !== undefined && <span className="num" aria-label={`${compact(p.followers)} followers`}>{compact(p.followers)}</span>}
+        <time className="num" dateTime={new Date(posted).toISOString()}>{hours < 1 ? 'now' : `${hours}h`}</time>
+        <span className={'num' + (p.replies >= 20 ? ' crowded' : '')}>{p.replies} {p.replies === 1 ? 'reply' : 'replies'}</span>
+        <span className="lane">{laneNames[p.lane] ?? p.lane}</span></div>
+      <PostText text={p.text} open={expanded} onToggle={onToggle} oneLine={!!mark} />
+      {mark ? <p className="pick-status">{markLabels[mark.state]} {clock(mark.at)} <button className="link" onClick={e => { e.stopPropagation(); onUndo(); }}>Undo</button></p> : <>
+        {verb && <p className="angle"><MessageCircleReply size={16} aria-hidden="true" /><strong>{verb}</strong>{hook && <span>{hook}</span>}</p>}
+        <div className="pick-actions">
+          <a className="reply" href={p.url} target="_blank" rel="noopener noreferrer" onClick={() => onMark('replied')}>Reply on X<ExternalLink size={15} aria-hidden="true" /><span className="sr-only"> (opens in a new tab)</span></a>
+          <button className="ghost bordered" onClick={e => { e.stopPropagation(); onMark('done'); }}>Done</button>
+          <button className="ghost" onClick={e => { e.stopPropagation(); onMark('skipped'); }}>Skip</button>
+          {selected && <span className="keys" aria-hidden="true"><kbd>j</kbd><kbd>k</kbd> move <kbd>↵</kbd> reply <kbd>d</kbd> done <kbd>s</kbd> skip <kbd>u</kbd> undo</span>}
+        </div></>}
+    </div>
+  </li>;
+}
+
 function EngageView() {
   const [today, setToday] = useState<EngageToday>();
   const [error, setError] = useState('');
+  const [selected, setSelected] = useState<string>();
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [openPulls, setOpenPulls] = useState<Record<string, boolean>>({});
+  const [said, setSaid] = useState('');
+  const last = useRef<string | undefined>(undefined);
+  const rows = useRef(new Map<string, HTMLLIElement>());
+  const { marks, mark, unmark } = useMarks(today?.date);
   const load = useRef(async () => {});
   load.current = async () => { try { setToday(await api<EngageToday>('engage/today')); setError(''); } catch (e) { setError(errorText(e)); } };
   useEffect(() => {
@@ -150,26 +208,52 @@ function EngageView() {
     return () => { clearInterval(timer); document.removeEventListener('visibilitychange', onShow); };
   }, []);
   const pulls = [...(today?.pulls ?? [])].reverse();
+  const all = pulls.flatMap(pull => pull.picks.map(p => ({ p, pull })));
+  const open = all.filter(({ p }) => !marks[p.id]).length;
+  const visible = all.filter(({ p, pull }) => openPulls[pull.at] || pull.picks.some(x => !marks[x.id]));
+  const act = (id: string, state: MarkState) => { mark(id, state); last.current = id; setSaid(`${markLabels[state]}.`); };
+  const undo = (id = last.current) => { if (id && marks[id]) { unmark(id); setSaid('Marked open again.'); } };
+  const move = (step: number) => {
+    const i = visible.findIndex(({ p }) => p.id === selected), next = visible[Math.min(visible.length - 1, Math.max(0, i + step))];
+    if (!next) return;
+    setSelected(next.p.id);
+    const el = rows.current.get(next.p.id); el?.focus({ preventScroll: true }); el?.scrollIntoView({ block: 'nearest' });
+  };
+  // Shortcuts listen on the window while this tab is open, so j works before any row has focus. Text fields are left alone.
+  const keyRef = useRef<(e: KeyboardEvent) => void>(() => {});
+  useEffect(() => { const h = (e: KeyboardEvent) => keyRef.current(e); window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h); }, []);
+  keyRef.current = (e: KeyboardEvent) => {
+    const target = e.target as HTMLElement;
+    if (e.metaKey || e.ctrlKey || e.altKey || target.closest('input, textarea, [contenteditable], [role="dialog"]')) return;
+    if (e.key === 'Enter' && target.tagName !== 'LI' && target.tagName !== 'BODY') return;
+    const current = visible.find(({ p }) => p.id === selected)?.p;
+    const keys: Record<string, () => void> = {
+      j: () => move(1), ArrowDown: () => move(1), k: () => move(-1), ArrowUp: () => move(-1),
+      Enter: () => { if (current && !marks[current.id]) { window.open(current.url, '_blank', 'noopener'); act(current.id, 'replied'); } },
+      o: () => { if (current && !marks[current.id]) { window.open(current.url, '_blank', 'noopener'); act(current.id, 'replied'); } },
+      d: () => { if (current && !marks[current.id]) act(current.id, 'done'); }, s: () => { if (current && !marks[current.id]) act(current.id, 'skipped'); },
+      u: () => undo(), e: () => { if (current) setExpanded(x => ({ ...x, [current.id]: !x[current.id] })); },
+    };
+    const run = keys[e.key];
+    if (run) { e.preventDefault(); run(); }
+  };
   return <section className="activity engage" aria-labelledby="engage-title">
-    <h1 id="engage-title">Engage</h1>
-    <p className="lede">Posts from your feed worth a reply today. New posts arrive around 1pm and 6pm, and the list starts fresh each morning.</p>
-    {error && <div className="engage-error" role="alert"><CircleAlert size={16} aria-hidden="true" /><span>Couldn’t load today’s posts. {error}</span><button className="quiet" onClick={() => void load.current()}>Try again</button></div>}
-    {!today && !error ? <p className="empty-status">Loading today’s posts…</p>
-      : today && !pulls.length ? <p className="engage-empty">Nothing pulled yet today. The first pull runs around 1pm New York time.</p>
+    <header className="engage-top"><h1 id="engage-title">Engage</h1>
+      {today && <p className="engage-status num">{all.length ? (open ? <><strong>{open} open</strong> of {all.length} today</> : <strong>All {all.length} handled</strong>) : 'Nothing yet today'} · next pull about {nextPull()}</p>}</header>
+    <div className="sr-only" role="status" aria-live="polite">{said}</div>
+    {error && <div className="engage-error" role="alert"><CircleAlert size={16} aria-hidden="true" /><span>Couldn’t load today’s posts. {error}</span><button className="ghost" onClick={() => void load.current()}>Try again</button></div>}
+    {!today && !error ? <ol className="picks" aria-busy="true" aria-label="Loading today’s posts">{[0, 1, 2].map(i => <li key={i} className="pick skeleton"><span /><span /><span /></li>)}</ol>
+      : today && !pulls.length ? <p className="engage-empty">Nothing yet today. The first pull lands about {nextPull()}.</p>
       : pulls.map(pull => {
-        const label = new Date(pull.at).toLocaleTimeString([], { timeZone, hour: 'numeric', minute: '2-digit' });
+        const left = pull.picks.filter(p => !marks[p.id]).length, collapsed = pull.picks.length > 0 && !left && !openPulls[pull.at];
         return <section key={pull.at} className="pull" aria-labelledby={'pull-' + pull.at}>
-          <h2 id={'pull-' + pull.at}>{label} pull</h2>
-          <p className="pull-meta">{pull.picks.length} of {pull.scanned} posts scanned</p>
-          {!pull.picks.length ? <p className="engage-empty">Nothing worth a reply in this pull.</p> : <ol className="picks">{pull.picks.map(p => {
-            const hours = Math.max(0, Math.round((Date.now() - Date.parse(pull.at)) / 3_600_000 + p.ageHours));
-            const idea = replyIdea(p);
-            return <li key={p.id} className="pick">
-              <div className="pick-head"><strong>{p.name}</strong><span>@{p.handle}</span>{p.followers !== undefined && <span>{compact(p.followers)} followers</span>}<time>{hours < 1 ? 'just now' : `${hours}h ago`}</time><span className="lane">{laneNames[p.lane] ?? p.lane}</span></div>
-              <PostText text={p.text} />
-              <div className="pick-foot">{idea ? <p className="idea"><MessageCircleReply size={15} aria-hidden="true" />{idea}</p> : <span />}<a className="reply" href={p.url} target="_blank" rel="noopener noreferrer">Reply on X<ExternalLink size={15} aria-hidden="true" /><span className="sr-only"> (opens in a new tab)</span></a></div>
-            </li>;
-          })}</ol>}
+          <h2 id={'pull-' + pull.at} className="pull-head num"><span className="pull-time">{clock(pull.at)}</span><span className="pull-meta">{pull.picks.length} picks · {pull.scanned} scanned</span>
+            <span className="pull-open">{!pull.picks.length ? '' : left ? `${left} open` : <button className="link" aria-expanded={!collapsed} onClick={() => setOpenPulls(x => ({ ...x, [pull.at]: !x[pull.at] }))}>All handled{collapsed ? ', show' : ', hide'}</button>}</span></h2>
+          {!pull.picks.length ? <p className="engage-empty">Nothing worth a reply in this pull.</p> : !collapsed && <ol className="picks">{pull.picks.map((p, i) =>
+            <PickRow key={p.id} p={p} rank={i + 1} pullAt={pull.at} mark={marks[p.id]} selected={selected === p.id} expanded={!!expanded[p.id]}
+              rowRef={el => { if (el) rows.current.set(p.id, el); else rows.current.delete(p.id); }}
+              onSelect={() => setSelected(p.id)} onToggle={() => setExpanded(x => ({ ...x, [p.id]: !x[p.id] }))}
+              onMark={s => act(p.id, s)} onUndo={() => undo(p.id)} />)}</ol>}
         </section>;
       })}
   </section>;
