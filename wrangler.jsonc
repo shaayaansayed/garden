@@ -34,7 +34,7 @@
     "ENGAGE_DIR": "Engage",
     "ENGAGE_MONTHLY_CREDITS": "500000"
   },
-  "triggers": { "crons": ["0 17 * * *", "0 22 * * *", "0 12 * * 1"] },
+  "triggers": { "crons": ["0 17 * * *", "0 22 * * *"] },
   "rules": [{ "type": "Text", "globs": ["**/AGENTS.md", "**/.personal/*.txt", "**/engage-seeds.txt"], "fallthrough": true }],
   "observability": { "enabled": false }
 }
